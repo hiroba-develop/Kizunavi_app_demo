@@ -2,23 +2,22 @@ import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import type {
   Employee,
-  EmployeeLayer,
+  EmployeeAppRole,
   EmployeeRole,
 } from "../types/survey";
 import { SAMPLE_EMPLOYEES } from "../data/surveyQuestions";
 
-const ROLE_OPTIONS: EmployeeRole[] = [
+const JOB_TITLE_OPTIONS: EmployeeRole[] = [
   "社長",
   "役員",
   "部長",
   "課長",
-  "係長",
-  "主任",
   "社員",
 ];
-const LAYER_OPTIONS: EmployeeLayer[] = ["マネージャー", "リーダー", "一般社員"];
 
-const DEFAULT_DEPARTMENTS = [
+const APP_ROLE_OPTIONS: EmployeeAppRole[] = ["一般ユーザー", "管理者"];
+
+const DEFAULT_DIVISION_MASTERS = [
   "営業部",
   "企画部",
   "開発部",
@@ -28,6 +27,25 @@ const DEFAULT_DEPARTMENTS = [
   "管理部",
   "法務部",
 ];
+
+const DEFAULT_SECTION_MASTERS = [
+  "営業1課",
+  "営業2課",
+  "企画課",
+  "開発1課",
+  "開発2課",
+  "人事課",
+  "経理課",
+  "デジマ課",
+];
+
+const uniqMerged = (base: string[], fromEmployees: Iterable<string>) => {
+  const set = new Set(base);
+  for (const x of fromEmployees) {
+    if (x) set.add(x);
+  }
+  return [...set];
+};
 
 const AVATAR_PALETTES = [
   { bg: "bg-blue-100", text: "text-blue-700" },
@@ -42,23 +60,36 @@ const AVATAR_PALETTES = [
   { bg: "bg-teal-100", text: "text-teal-700" },
 ];
 
-const layerBadgeClass: Record<EmployeeLayer, string> = {
-  マネージャー: "bg-purple-100 text-purple-700",
-  リーダー: "bg-blue-100 text-blue-700",
-  一般社員: "bg-gray-100 text-gray-600",
+const appRoleBadgeClass: Record<EmployeeAppRole, string> = {
+  管理者: "bg-violet-100 text-violet-800",
+  一般ユーザー: "bg-gray-100 text-gray-600",
 };
 
-const initialForm = {
-  name: "",
+type EmployeeFormState = {
+  displayName: string;
+  email: string;
+  appRole: EmployeeAppRole;
+  departmentDivision: string;
+  departmentSection: string;
+  role: EmployeeRole;
+  joinedAt: string;
+};
+
+const buildInitialForm = (
+  divisions: string[],
+  sections: string[]
+): EmployeeFormState => ({
+  displayName: "",
   email: "",
-  department: DEFAULT_DEPARTMENTS[0],
-  role: "社員" as EmployeeRole,
-  layer: "一般社員" as EmployeeLayer,
+  appRole: "一般ユーザー",
+  departmentDivision: divisions[0] ?? "",
+  departmentSection: sections[0] ?? "",
+  role: "社員",
   joinedAt: "",
-};
+});
 
-const getAvatarInitials = (name: string) => {
-  const trimmed = name.trim();
+const getAvatarInitials = (displayName: string) => {
+  const trimmed = displayName.trim();
   const parts = trimmed.split(/\s+/);
   if (parts.length >= 2) {
     return `${parts[0].charAt(0)}${parts[1].charAt(0)}`;
@@ -86,53 +117,231 @@ const isCurrentFiscalYear = (joinedAt: string) => {
   if (!joinedAt) return false;
   const date = new Date(joinedAt);
   const now = new Date();
-  const fyStartYear = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
+  const fyStartYear =
+    now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
   const fyStart = new Date(fyStartYear, 3, 1);
   const fyEnd = new Date(fyStartYear + 1, 3, 1);
   return date >= fyStart && date < fyEnd;
 };
 
+function MasterListEditor({
+  title,
+  items,
+  addPlaceholder,
+  onAdd,
+  onRename,
+  onDelete,
+  deleteBlockedMessage,
+}: {
+  title: string;
+  items: string[];
+  addPlaceholder: string;
+  onAdd: (label: string) => void | string;
+  onRename: (from: string, to: string) => void | string;
+  onDelete: (label: string) => void | string;
+  deleteBlockedMessage: string;
+}) {
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState("");
+  const [editingLabel, setEditingLabel] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  const clearFeedback = () => setError("");
+
+  const submitAdd = () => {
+    clearFeedback();
+    const msg = onAdd(draft.trim());
+    if (typeof msg === "string") {
+      setError(msg);
+      return;
+    }
+    setDraft("");
+  };
+
+  return (
+    <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 sm:p-4">
+      <h4 className="text-xs font-semibold text-gray-700 mb-3">{title}</h4>
+      <ul className="space-y-1.5 max-h-48 overflow-y-auto mb-3">
+        {items.length === 0 ? (
+          <li className="text-xs text-gray-400">項目がありません</li>
+        ) : (
+          items.map((label) => (
+            <li
+              key={label}
+              className="flex items-center gap-2 text-sm text-gray-800 flex-wrap"
+            >
+              {editingLabel === label ? (
+                <>
+                  <input
+                    type="text"
+                    value={renameDraft}
+                    onChange={(e) => setRenameDraft(e.target.value)}
+                    className="flex-1 min-w-[120px] border border-gray-300 rounded px-2 py-1 text-sm"
+                  />
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50"
+                    onClick={() => {
+                      clearFeedback();
+                      const msg = onRename(label, renameDraft.trim());
+                      if (typeof msg === "string") {
+                        setError(msg);
+                        return;
+                      }
+                      setEditingLabel(null);
+                      setRenameDraft("");
+                    }}
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-800"
+                    onClick={() => {
+                      setEditingLabel(null);
+                      setRenameDraft("");
+                      clearFeedback();
+                    }}
+                  >
+                    キャンセル
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 min-w-[100px]">{label}</span>
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-0.5 border border-gray-200 rounded bg-white hover:bg-gray-50"
+                    onClick={() => {
+                      setEditingLabel(label);
+                      setRenameDraft(label);
+                      clearFeedback();
+                    }}
+                  >
+                    変更
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs px-2 py-0.5 border border-red-100 rounded text-red-600 hover:bg-red-50"
+                    onClick={() => {
+                      clearFeedback();
+                      const msg = onDelete(label);
+                      if (typeof msg === "string") {
+                        setError(msg);
+                        return;
+                      }
+                      if (editingLabel === label) {
+                        setEditingLabel(null);
+                        setRenameDraft("");
+                      }
+                    }}
+                  >
+                    削除
+                  </button>
+                </>
+              )}
+            </li>
+          ))
+        )}
+      </ul>
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2 flex-wrap items-center">
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder={addPlaceholder}
+            className="flex-1 min-w-[140px] border border-gray-300 rounded-md shadow-sm py-1.5 px-2 text-sm"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submitAdd();
+              }
+            }}
+          />
+          <button
+            type="button"
+            onClick={submitAdd}
+            className="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-gray-800 whitespace-nowrap"
+          >
+            追加
+          </button>
+        </div>
+        {error && (
+          <p className="text-xs text-red-600" role="alert">
+            {error}
+          </p>
+        )}
+        <p className="text-[11px] text-gray-400">{deleteBlockedMessage}</p>
+      </div>
+    </div>
+  );
+}
+
 const EmployeeRegistration = () => {
   const [employees, setEmployees] = useState<Employee[]>(SAMPLE_EMPLOYEES);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [activeDepartment, setActiveDepartment] = useState<string>("すべて");
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(initialForm);
-  const [errorMessage, setErrorMessage] = useState("");
-  const [editModalEmployee, setEditModalEmployee] = useState<Employee | null>(
-    null
+
+  const [divisionMasters, setDivisionMasters] = useState(() =>
+    uniqMerged(
+      DEFAULT_DIVISION_MASTERS,
+      SAMPLE_EMPLOYEES.map((e) => e.departmentDivision)
+    )
   );
-  const [editForm, setEditForm] = useState(initialForm);
+  const [sectionMasters, setSectionMasters] = useState(() =>
+    uniqMerged(
+      DEFAULT_SECTION_MASTERS,
+      SAMPLE_EMPLOYEES.map((e) => e.departmentSection)
+    )
+  );
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeDivision, setActiveDivision] = useState<string>("すべて");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState<EmployeeFormState>(() =>
+    buildInitialForm(
+      uniqMerged(
+        DEFAULT_DIVISION_MASTERS,
+        SAMPLE_EMPLOYEES.map((e) => e.departmentDivision)
+      ),
+      uniqMerged(
+        DEFAULT_SECTION_MASTERS,
+        SAMPLE_EMPLOYEES.map((e) => e.departmentSection)
+      )
+    )
+  );
+  const [errorMessage, setErrorMessage] = useState("");
+  const [editModalEmployee, setEditModalEmployee] =
+    useState<Employee | null>(null);
+  const [editForm, setEditForm] = useState<EmployeeFormState>(() =>
+    buildInitialForm([], [])
+  );
   const [editErrorMessage, setEditErrorMessage] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
-
-  const departments = useMemo(() => {
-    const dynamicDepartments = Array.from(
-      new Set(employees.map((emp) => emp.department))
-    );
-    const merged = [...DEFAULT_DEPARTMENTS];
-    for (const dept of dynamicDepartments) {
-      if (!merged.includes(dept)) merged.push(dept);
-    }
-    return merged;
-  }, [employees]);
+  const [showMasterEditor, setShowMasterEditor] = useState(false);
 
   const filteredEmployees = employees.filter((emp) => {
-    if (activeDepartment !== "すべて" && emp.department !== activeDepartment) {
+    if (
+      activeDivision !== "すべて" &&
+      emp.departmentDivision !== activeDivision
+    ) {
       return false;
     }
     const term = searchTerm.toLowerCase();
     if (!term) return true;
     return (
-      emp.name.toLowerCase().includes(term) ||
+      emp.displayName.toLowerCase().includes(term) ||
       emp.email.toLowerCase().includes(term) ||
-      emp.department.toLowerCase().includes(term)
+      emp.departmentDivision.toLowerCase().includes(term) ||
+      emp.departmentSection.toLowerCase().includes(term) ||
+      emp.appRole.includes(term)
     );
   });
 
   const stats = useMemo(() => {
     const totalEmployees = employees.length;
-    const departmentCount = new Set(employees.map((e) => e.department)).size;
+    const divisionCount = new Set(
+      employees.map((e) => e.departmentDivision)
+    ).size;
     const avgTenure =
       employees.length === 0
         ? 0
@@ -142,7 +351,7 @@ const EmployeeRegistration = () => {
       .length;
     return {
       totalEmployees,
-      departmentCount,
+      divisionCount,
       avgTenure: Math.round(avgTenure * 10) / 10,
       newHires,
     };
@@ -159,29 +368,50 @@ const EmployeeRegistration = () => {
     e.preventDefault();
     setErrorMessage("");
 
-    if (!form.name || !form.email || !form.department || !form.joinedAt) {
-      setErrorMessage("すべての項目を入力してください");
+    if (
+      !form.displayName ||
+      !form.email ||
+      !form.departmentDivision ||
+      !form.departmentSection ||
+      !form.joinedAt
+    ) {
+      setErrorMessage("必須項目をすべて入力してください");
+      return;
+    }
+
+    if (
+      !divisionMasters.includes(form.departmentDivision) ||
+      !sectionMasters.includes(form.departmentSection)
+    ) {
+      setErrorMessage("部署はマスタに登録された値から選んでください");
       return;
     }
 
     const newEmployee: Employee = {
       id: `emp-${Date.now()}`,
-      ...form,
+      displayName: form.displayName.trim(),
+      email: form.email.trim(),
+      appRole: form.appRole,
+      departmentDivision: form.departmentDivision,
+      departmentSection: form.departmentSection,
+      role: form.role,
+      joinedAt: form.joinedAt,
     };
 
     setEmployees((prev) => [...prev, newEmployee]);
-    setForm(initialForm);
+    setForm(buildInitialForm(divisionMasters, sectionMasters));
     setShowForm(false);
   };
 
   const openEditModal = (emp: Employee) => {
     setEditModalEmployee(emp);
     setEditForm({
-      name: emp.name,
+      displayName: emp.displayName,
       email: emp.email,
-      department: emp.department,
+      appRole: emp.appRole,
+      departmentDivision: emp.departmentDivision,
+      departmentSection: emp.departmentSection,
       role: emp.role,
-      layer: emp.layer,
       joinedAt: emp.joinedAt,
     });
     setEditErrorMessage("");
@@ -189,7 +419,7 @@ const EmployeeRegistration = () => {
 
   const closeEditModal = () => {
     setEditModalEmployee(null);
-    setEditForm(initialForm);
+    setEditForm(buildInitialForm([], []));
     setEditErrorMessage("");
   };
 
@@ -206,18 +436,38 @@ const EmployeeRegistration = () => {
     setEditErrorMessage("");
 
     if (
-      !editForm.name ||
+      !editForm.displayName ||
       !editForm.email ||
-      !editForm.department ||
+      !editForm.departmentDivision ||
+      !editForm.departmentSection ||
       !editForm.joinedAt
     ) {
-      setEditErrorMessage("すべての項目を入力してください");
+      setEditErrorMessage("必須項目をすべて入力してください");
+      return;
+    }
+
+    if (
+      !divisionMasters.includes(editForm.departmentDivision) ||
+      !sectionMasters.includes(editForm.departmentSection)
+    ) {
+      setEditErrorMessage("部署はマスタに登録された値から選んでください");
       return;
     }
 
     setEmployees((prev) =>
       prev.map((emp) =>
-        emp.id === editModalEmployee.id ? { ...emp, ...editForm } : emp
+        emp.id === editModalEmployee.id
+          ? {
+              ...emp,
+              displayName: editForm.displayName.trim(),
+              email: editForm.email.trim(),
+              appRole: editForm.appRole,
+              departmentDivision: editForm.departmentDivision,
+              departmentSection: editForm.departmentSection,
+              role: editForm.role,
+              joinedAt: editForm.joinedAt,
+            }
+          : emp
       )
     );
     closeEditModal();
@@ -230,12 +480,33 @@ const EmployeeRegistration = () => {
   };
 
   useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      departmentDivision: divisionMasters.includes(prev.departmentDivision)
+        ? prev.departmentDivision
+        : (divisionMasters[0] ?? ""),
+      departmentSection: sectionMasters.includes(prev.departmentSection)
+        ? prev.departmentSection
+        : (sectionMasters[0] ?? ""),
+    }));
+    setEditForm((prev) => ({
+      ...prev,
+      departmentDivision: divisionMasters.includes(prev.departmentDivision)
+        ? prev.departmentDivision
+        : (divisionMasters[0] ?? ""),
+      departmentSection: sectionMasters.includes(prev.departmentSection)
+        ? prev.departmentSection
+        : (sectionMasters[0] ?? ""),
+    }));
+  }, [divisionMasters, sectionMasters]);
+
+  useEffect(() => {
     if (!editModalEmployee && !deleteTarget) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (editModalEmployee) {
         setEditModalEmployee(null);
-        setEditForm(initialForm);
+        setEditForm(buildInitialForm([], []));
         setEditErrorMessage("");
       }
       if (deleteTarget) setDeleteTarget(null);
@@ -246,19 +517,21 @@ const EmployeeRegistration = () => {
 
   const handleCsvExport = () => {
     const header = [
-      "氏名",
+      "表示名",
       "メールアドレス",
-      "部署",
+      "ロール",
+      "部署(部)",
+      "部署(課)",
       "役職",
-      "レイヤー",
-      "入社日",
+      "入社年月日",
     ];
     const rows = employees.map((e) => [
-      e.name,
+      e.displayName,
       e.email,
-      e.department,
+      e.appRole,
+      e.departmentDivision,
+      e.departmentSection,
       e.role,
-      e.layer,
       e.joinedAt,
     ]);
     const csv = [header, ...rows]
@@ -268,7 +541,9 @@ const EmployeeRegistration = () => {
           .join(",")
       )
       .join("\n");
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([`\uFEFF${csv}`], {
+      type: "text/csv;charset=utf-8;",
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -277,9 +552,81 @@ const EmployeeRegistration = () => {
     URL.revokeObjectURL(url);
   };
 
+  const addDivision = (label: string) => {
+    if (!label) return "名称を入力してください";
+    if (divisionMasters.includes(label)) return "同じ名前が既にあります";
+    setDivisionMasters((prev) => [...prev, label]);
+  };
+
+  const renameDivision = (from: string, to: string) => {
+    if (!to) return "名称を入力してください";
+    if (from === to) return undefined;
+    if (divisionMasters.includes(to)) return "同じ名前が既にあります";
+    setDivisionMasters((prev) =>
+      prev.map((d) => (d === from ? to : d))
+    );
+    setEmployees((prev) =>
+      prev.map((e) =>
+        e.departmentDivision === from
+          ? { ...e, departmentDivision: to }
+          : e
+      )
+    );
+    setForm((f) =>
+      f.departmentDivision === from ? { ...f, departmentDivision: to } : f
+    );
+    setEditForm((f) =>
+      f.departmentDivision === from ? { ...f, departmentDivision: to } : f
+    );
+    if (activeDivision === from) setActiveDivision(to);
+  };
+
+  const deleteDivision = (label: string) => {
+    const inUse = employees.some((e) => e.departmentDivision === label);
+    if (inUse) {
+      return "この部署(部)を使用しているユーザーがいるため削除できません";
+    }
+    setDivisionMasters((prev) => prev.filter((d) => d !== label));
+  };
+
+  const addSection = (label: string) => {
+    if (!label) return "名称を入力してください";
+    if (sectionMasters.includes(label)) return "同じ名前が既にあります";
+    setSectionMasters((prev) => [...prev, label]);
+  };
+
+  const renameSection = (from: string, to: string) => {
+    if (!to) return "名称を入力してください";
+    if (from === to) return undefined;
+    if (sectionMasters.includes(to)) return "同じ名前が既にあります";
+    setSectionMasters((prev) =>
+      prev.map((s) => (s === from ? to : s))
+    );
+    setEmployees((prev) =>
+      prev.map((e) =>
+        e.departmentSection === from ? { ...e, departmentSection: to } : e
+      )
+    );
+    setForm((f) =>
+      f.departmentSection === from ? { ...f, departmentSection: to } : f
+    );
+    setEditForm((f) =>
+      f.departmentSection === from ? { ...f, departmentSection: to } : f
+    );
+  };
+
+  const deleteSection = (label: string) => {
+    const inUse = employees.some((e) => e.departmentSection === label);
+    if (inUse) {
+      return "この部署(課)を使用しているユーザーがいるため削除できません";
+    }
+    setSectionMasters((prev) => prev.filter((s) => s !== label));
+  };
+
+  const divisionTabs = divisionMasters;
+
   return (
     <div className="space-y-6">
-      {/* ヘッダー */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -359,6 +706,7 @@ const EmployeeRegistration = () => {
             type="button"
             onClick={() => {
               setShowForm((prev) => !prev);
+              setForm(buildInitialForm(divisionMasters, sectionMasters));
               setErrorMessage("");
             }}
             className="inline-flex items-center gap-1.5 px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
@@ -366,10 +714,39 @@ const EmployeeRegistration = () => {
             <span className="text-base leading-none">+</span>
             従業員を追加
           </button>
+          <button
+            type="button"
+            onClick={() => setShowMasterEditor((p) => !p)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 shadow-sm"
+          >
+            部署マスタ編集（部・課）
+          </button>
         </div>
       </div>
 
-      {/* 検索 + 部署フィルタ */}
+      {showMasterEditor && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <MasterListEditor
+            title="部署（部）— 追加・変更・削除"
+            items={[...divisionMasters].sort((a, b) => a.localeCompare(b))}
+            addPlaceholder="例: 品質保証部"
+            onAdd={addDivision}
+            onRename={renameDivision}
+            onDelete={deleteDivision}
+            deleteBlockedMessage="使用中の部署(部)は削除できません。先に該当ユーザーの部署を変更してください。"
+          />
+          <MasterListEditor
+            title="部署（課）— 追加・変更・削除"
+            items={[...sectionMasters].sort((a, b) => a.localeCompare(b))}
+            addPlaceholder="例: QA課"
+            onAdd={addSection}
+            onRename={renameSection}
+            onDelete={deleteSection}
+            deleteBlockedMessage="使用中の部署(課)は削除できません。先に該当ユーザーの部署を変更してください。"
+          />
+        </div>
+      )}
+
       <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
         <div className="relative flex-1 lg:max-w-md">
           <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -392,18 +769,18 @@ const EmployeeRegistration = () => {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="氏名・メール・部署で検索…"
+            placeholder="表示名・メール・部署・ロールで検索…"
             className="block w-full pl-9 pr-3 py-2 border border-gray-200 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-sm"
           />
         </div>
         <div className="flex flex-wrap items-center gap-2 flex-1">
-          {["すべて", ...departments].map((dept) => {
-            const isActive = activeDepartment === dept;
+          {["すべて", ...divisionTabs].map((dept) => {
+            const isActive = activeDivision === dept;
             return (
               <button
                 key={dept}
                 type="button"
-                onClick={() => setActiveDepartment(dept)}
+                onClick={() => setActiveDivision(dept)}
                 className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
                   isActive
                     ? "bg-gray-900 text-white"
@@ -420,24 +797,10 @@ const EmployeeRegistration = () => {
         </div>
       </div>
 
-      {/* フォーム */}
       {showForm && (
         <div className="bg-white shadow rounded-lg border border-gray-100 p-4 sm:p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  氏名 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  name="name"
-                  type="text"
-                  value={form.name}
-                  onChange={handleChange}
-                  placeholder="山田 太郎"
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                />
-              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   メールアドレス <span className="text-red-500">*</span>
@@ -453,17 +816,80 @@ const EmployeeRegistration = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  部署 <span className="text-red-500">*</span>
+                  表示名 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  name="displayName"
+                  type="text"
+                  value={form.displayName}
+                  onChange={handleChange}
+                  placeholder="山田 太郎"
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  ロール <span className="text-red-500">*</span>
                 </label>
                 <select
-                  name="department"
-                  value={form.department}
+                  name="appRole"
+                  value={form.appRole}
                   onChange={handleChange}
                   className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
                 >
-                  {departments.map((d) => (
+                  {APP_ROLE_OPTIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  入社年月日 <span className="text-red-500">*</span>
+                </label>
+                <input
+                  name="joinedAt"
+                  type="date"
+                  value={form.joinedAt}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  部署（部） <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="departmentDivision"
+                  value={form.departmentDivision}
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                >
+                  {divisionMasters.map((d) => (
                     <option key={d} value={d}>
                       {d}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">
+                  部署（課） <span className="text-red-500">*</span>
+                </label>
+                <select
+                  name="departmentSection"
+                  value={
+                    sectionMasters.includes(form.departmentSection)
+                      ? form.departmentSection
+                      : (sectionMasters[0] ?? "")
+                  }
+                  onChange={handleChange}
+                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                >
+                  {sectionMasters.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
                     </option>
                   ))}
                 </select>
@@ -478,41 +904,12 @@ const EmployeeRegistration = () => {
                   onChange={handleChange}
                   className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
                 >
-                  {ROLE_OPTIONS.map((r) => (
+                  {JOB_TITLE_OPTIONS.map((r) => (
                     <option key={r} value={r}>
                       {r}
                     </option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  レイヤー <span className="text-red-500">*</span>
-                </label>
-                <select
-                  name="layer"
-                  value={form.layer}
-                  onChange={handleChange}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                >
-                  {LAYER_OPTIONS.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  入社日 <span className="text-red-500">*</span>
-                </label>
-                <input
-                  name="joinedAt"
-                  type="date"
-                  value={form.joinedAt}
-                  onChange={handleChange}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                />
               </div>
             </div>
             {errorMessage && (
@@ -524,7 +921,7 @@ const EmployeeRegistration = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setForm(initialForm);
+                  setForm(buildInitialForm(divisionMasters, sectionMasters));
                   setShowForm(false);
                   setErrorMessage("");
                 }}
@@ -543,18 +940,18 @@ const EmployeeRegistration = () => {
         </div>
       )}
 
-      {/* テーブル */}
       <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-100">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-100">
             <thead>
               <tr className="text-left text-xs font-medium text-gray-500">
-                <th className="px-6 py-3">氏名</th>
-                <th className="px-6 py-3">部署</th>
+                <th className="px-6 py-3">表示名</th>
+                <th className="px-6 py-3 hidden lg:table-cell">メールアドレス</th>
+                <th className="px-6 py-3">ロール</th>
+                <th className="px-6 py-3">部署(部)</th>
+                <th className="px-6 py-3">部署(課)</th>
                 <th className="px-6 py-3">役職</th>
-                <th className="px-6 py-3">レイヤー</th>
-                <th className="px-6 py-3">メール</th>
-                <th className="px-6 py-3">入社日</th>
+                <th className="px-6 py-3">入社年月日</th>
                 <th className="px-6 py-3 text-right">操作</th>
               </tr>
             </thead>
@@ -562,10 +959,10 @@ const EmployeeRegistration = () => {
               {filteredEmployees.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-6 py-10 text-center text-sm text-gray-500"
                   >
-                    {searchTerm || activeDepartment !== "すべて"
+                    {searchTerm || activeDivision !== "すべて"
                       ? "条件に一致する従業員が見つかりません"
                       : "従業員が登録されていません"}
                   </td>
@@ -580,33 +977,36 @@ const EmployeeRegistration = () => {
                           <div
                             className={`h-10 w-10 rounded-full ${palette.bg} ${palette.text} flex items-center justify-center text-xs font-semibold border border-white shadow-sm`}
                           >
-                            {getAvatarInitials(emp.name)}
+                            {getAvatarInitials(emp.displayName)}
                           </div>
                           <div className="min-w-0">
                             <div className="text-sm font-semibold text-gray-900 truncate">
-                              {emp.name}
+                              {emp.displayName}
                             </div>
-                            <div className="text-xs text-gray-500 truncate">
+                            <div className="text-xs text-gray-500 truncate lg:hidden">
                               {emp.email}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {emp.department}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {emp.role}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[220px] truncate hidden lg:table-cell">
+                        {emp.email}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span
-                          className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-md ${layerBadgeClass[emp.layer]}`}
+                          className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-md ${appRoleBadgeClass[emp.appRole]}`}
                         >
-                          {emp.layer}
+                          {emp.appRole}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 max-w-[200px] truncate">
-                        {emp.email}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {emp.departmentDivision}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {emp.departmentSection}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                        {emp.role}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         {emp.joinedAt}
@@ -638,7 +1038,6 @@ const EmployeeRegistration = () => {
         </div>
       </div>
 
-      {/* 統計カード */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
           label="総従業員数"
@@ -646,8 +1045,8 @@ const EmployeeRegistration = () => {
           accent="blue"
         />
         <StatCard
-          label="部署数"
-          value={`${stats.departmentCount}部署`}
+          label="部署(部)の種類数"
+          value={`${stats.divisionCount}種`}
           accent="purple"
         />
         <StatCard
@@ -662,7 +1061,6 @@ const EmployeeRegistration = () => {
         />
       </div>
 
-      {/* 編集モーダル */}
       {editModalEmployee && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
@@ -711,18 +1109,6 @@ const EmployeeRegistration = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    氏名 <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    name="name"
-                    type="text"
-                    value={editForm.name}
-                    onChange={handleEditChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
                     メールアドレス <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -735,17 +1121,79 @@ const EmployeeRegistration = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">
-                    部署 <span className="text-red-500">*</span>
+                    表示名 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    name="displayName"
+                    type="text"
+                    value={editForm.displayName}
+                    onChange={handleEditChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    ロール <span className="text-red-500">*</span>
                   </label>
                   <select
-                    name="department"
-                    value={editForm.department}
+                    name="appRole"
+                    value={editForm.appRole}
                     onChange={handleEditChange}
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
                   >
-                    {departments.map((d) => (
+                    {APP_ROLE_OPTIONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    入社年月日 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    name="joinedAt"
+                    type="date"
+                    value={editForm.joinedAt}
+                    onChange={handleEditChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    部署（部） <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="departmentDivision"
+                    value={editForm.departmentDivision}
+                    onChange={handleEditChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                  >
+                    {divisionMasters.map((d) => (
                       <option key={d} value={d}>
                         {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">
+                    部署（課） <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    name="departmentSection"
+                    value={
+                      sectionMasters.includes(editForm.departmentSection)
+                        ? editForm.departmentSection
+                        : (sectionMasters[0] ?? "")
+                    }
+                    onChange={handleEditChange}
+                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
+                  >
+                    {sectionMasters.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
                       </option>
                     ))}
                   </select>
@@ -760,41 +1208,12 @@ const EmployeeRegistration = () => {
                     onChange={handleEditChange}
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
                   >
-                    {ROLE_OPTIONS.map((r) => (
+                    {JOB_TITLE_OPTIONS.map((r) => (
                       <option key={r} value={r}>
                         {r}
                       </option>
                     ))}
                   </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    レイヤー <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    name="layer"
-                    value={editForm.layer}
-                    onChange={handleEditChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                  >
-                    {LAYER_OPTIONS.map((l) => (
-                      <option key={l} value={l}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    入社日 <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    name="joinedAt"
-                    type="date"
-                    value={editForm.joinedAt}
-                    onChange={handleEditChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                  />
                 </div>
               </div>
               {editErrorMessage && (
@@ -822,7 +1241,6 @@ const EmployeeRegistration = () => {
         </div>
       )}
 
-      {/* 削除確認 */}
       {deleteTarget && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
@@ -845,12 +1263,9 @@ const EmployeeRegistration = () => {
             >
               従業員を削除しますか？
             </h3>
-            <p
-              id="delete-confirm-desc"
-              className="mt-2 text-sm text-gray-600"
-            >
+            <p id="delete-confirm-desc" className="mt-2 text-sm text-gray-600">
               <span className="font-medium text-gray-900">
-                {deleteTarget.name}
+                {deleteTarget.displayName}
               </span>
               （{deleteTarget.email}）を削除します。この操作は取り消せません。
             </p>

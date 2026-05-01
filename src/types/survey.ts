@@ -1,21 +1,22 @@
-export type EmployeeRole =
-  | "社長"
-  | "役員"
-  | "部長"
-  | "課長"
-  | "係長"
-  | "主任"
-  | "社員";
+/** アプリ権限ロール（一般ユーザー / 管理者） */
+export type EmployeeAppRole = "一般ユーザー" | "管理者";
 
-export type EmployeeLayer = "マネージャー" | "リーダー" | "一般社員";
+/** 役職（ジョブランク選択） */
+export type EmployeeRole = "社長" | "役員" | "部長" | "課長" | "社員";
 
 export interface Employee {
   id: string;
-  name: string;
+  /** 表示名 */
+  displayName: string;
   email: string;
-  department: string;
+  appRole: EmployeeAppRole;
+  /** 部署(部) — 値はユーザー管理のマスタから選択 */
+  departmentDivision: string;
+  /** 部署(課) — 値はユーザー管理のマスタから選択 */
+  departmentSection: string;
+  /** 役職 */
   role: EmployeeRole;
-  layer: EmployeeLayer;
+  /** 入社年月日（YYYY-MM-DD） */
   joinedAt: string;
 }
 
