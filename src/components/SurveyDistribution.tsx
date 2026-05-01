@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import type { SurveyDistribution as SurveyDistributionType } from "../types/survey";
-import { SAMPLE_EMPLOYEES, SURVEY_QUESTIONS } from "../data/surveyQuestions";
+import { SAMPLE_EMPLOYEES } from "../data/surveyQuestions";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
