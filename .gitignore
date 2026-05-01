@@ -1,0 +1,55 @@
+# 依存関係
+node_modules
+
+# ビルド・配布
+dist
+dist-ssr
+*.local
+
+# TypeScript（project references / tsc -b）
+*.tsbuildinfo
+
+# Vite
+.vite
+
+# ログ
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# テスト・カバレッジ（将来追加時用）
+coverage
+*.lcov
+
+# 環境変数（`.env.example` などテンプレートは追跡する）
+.env
+.env.*
+!.env.example
+
+# OpenAPI 生成コード（`npm run generate` で再生成）
+src/generated/
+
+# エディタ・OS
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# エディタスワップ・バックアップ
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+
+# ツールキャッシュ
+.eslintcache
