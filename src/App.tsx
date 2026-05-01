@@ -5,6 +5,7 @@ import {
   Navigate,
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { EmployeeRoleLabelsProvider } from "./contexts/EmployeeRoleLabelsContext";
 import Layout from "./components/Layout";
 import Dashboard from "./pages/Dashboard";
 import Login from "./pages/Login";
@@ -133,9 +134,11 @@ function App() {
 
   return (
     <AuthProvider>
-      <Router basename={basename}>
-        <AppContent />
-      </Router>
+      <EmployeeRoleLabelsProvider>
+        <Router basename={basename}>
+          <AppContent />
+        </Router>
+      </EmployeeRoleLabelsProvider>
     </AuthProvider>
   );
 }

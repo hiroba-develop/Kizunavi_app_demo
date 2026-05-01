@@ -1,8 +1,20 @@
 /** アプリ権限ロール（一般ユーザー / 管理者） */
 export type EmployeeAppRole = "一般ユーザー" | "管理者";
 
-/** 役職（ジョブランク選択） */
-export type EmployeeRole = "社長" | "役員" | "部長" | "課長" | "社員";
+/**
+ * 役職5階層の内部キー（固定）。画面上の文言は useEmployeeRoleLabels().getEmployeeRoleLabel を使用
+ * - president: 既定表記「社長」
+ * - executive: 既定表記「役員」
+ * - division_head: 既定表記「部長」
+ * - section_head: 既定表記「課長」
+ * - staff: 既定表記「社員」
+ */
+export type EmployeeRole =
+  | "president"
+  | "executive"
+  | "division_head"
+  | "section_head"
+  | "staff";
 
 export interface Employee {
   id: string;

@@ -71,7 +71,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "管理者",
     departmentDivision: "営業部",
     departmentSection: "営業1課",
-    role: "部長",
+    role: "division_head",
     joinedAt: "2015-04-01",
   },
   {
@@ -81,7 +81,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "一般ユーザー",
     departmentDivision: "企画部",
     departmentSection: "企画課",
-    role: "課長",
+    role: "section_head",
     joinedAt: "2018-07-01",
   },
   {
@@ -91,7 +91,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "一般ユーザー",
     departmentDivision: "開発部",
     departmentSection: "開発1課",
-    role: "社員",
+    role: "staff",
     joinedAt: "2022-04-01",
   },
   {
@@ -101,7 +101,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "一般ユーザー",
     departmentDivision: "人事部",
     departmentSection: "人事課",
-    role: "課長",
+    role: "section_head",
     joinedAt: "2020-10-01",
   },
   {
@@ -111,7 +111,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "一般ユーザー",
     departmentDivision: "経理部",
     departmentSection: "経理課",
-    role: "社員",
+    role: "staff",
     joinedAt: "2023-04-01",
   },
   {
@@ -121,7 +121,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "一般ユーザー",
     departmentDivision: "マーケ部",
     departmentSection: "デジマ課",
-    role: "課長",
+    role: "section_head",
     joinedAt: "2019-04-01",
   },
   {
@@ -131,7 +131,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "管理者",
     departmentDivision: "開発部",
     departmentSection: "開発2課",
-    role: "課長",
+    role: "section_head",
     joinedAt: "2017-04-01",
   },
   {
@@ -141,7 +141,7 @@ export const SAMPLE_EMPLOYEES: Employee[] = [
     appRole: "一般ユーザー",
     departmentDivision: "営業部",
     departmentSection: "営業2課",
-    role: "社員",
+    role: "staff",
     joinedAt: "2023-10-01",
   },
 ];

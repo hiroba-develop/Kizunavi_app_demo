@@ -5,6 +5,8 @@ import type {
   SurveyRecipientProgress,
 } from "../types/survey";
 import { SAMPLE_EMPLOYEES } from "../data/surveyQuestions";
+import { EMPLOYEE_ROLES_IN_ORDER } from "../config/employeeRoleLabels";
+import { useEmployeeRoleLabels } from "../contexts/EmployeeRoleLabelsContext";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -36,7 +38,7 @@ const initialSurveys: SurveyDistributionType[] = [
     id: "srv-001",
     title: "2026年度 第1回 組織サーベイ",
     description: "組織の現状把握のためのサーベイです",
-    targetRoles: ["部長", "課長", "社員"],
+    targetRoles: ["division_head", "section_head", "staff"],
     startDate: "2026-04-01",
     expirationDate: "2026-05-15",
     status: "active",
@@ -50,7 +52,7 @@ const initialSurveys: SurveyDistributionType[] = [
     id: "srv-002",
     title: "経営層向けキズナ調査",
     description: "経営層を対象とした関係性調査",
-    targetRoles: ["社長", "役員"],
+    targetRoles: ["president", "executive"],
     startDate: "2026-04-15",
     expirationDate: "2026-04-29",
     status: "expired",
@@ -76,6 +78,7 @@ const buildSurveyAnswerUrl = (surveyId: string) =>
   ).href;
 
 const SurveyDistribution = () => {
+  const { getEmployeeRoleLabel } = useEmployeeRoleLabels();
   const [surveys, setSurveys] = useState<SurveyDistributionType[]>(initialSurveys);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(initialForm);
@@ -113,7 +116,7 @@ const SurveyDistribution = () => {
       id: `srv-${Date.now()}`,
       title: form.title,
       description: form.description,
-      targetRoles: ["社長", "役員", "部長", "課長", "社員"],
+      targetRoles: [...EMPLOYEE_ROLES_IN_ORDER],
       startDate: today(),
       expirationDate: form.expirationDate,
       status: "active",
@@ -392,7 +395,8 @@ const SurveyDistribution = () => {
                                   </span>
                                   {emp && (
                                     <span className="text-xs text-gray-500">
-                                      {emp.departmentSection} · {emp.role}
+                                      {emp.departmentSection} ·{" "}
+                                      {getEmployeeRoleLabel(emp.role)}
                                     </span>
                                   )}
                                   {r.respondedAt && (

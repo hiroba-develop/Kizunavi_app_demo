@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   ALERT_CATEGORIES,
+  ALERT_CATEGORY_DISPLAY_ORDER,
   ALERTS,
+  DISPLAY_ALERT_LIMIT,
   OVERALL_SCORE,
   PREVIOUS_SCORE_DELTA,
   SCORE_CARDS,
@@ -10,14 +12,50 @@ import {
 } from "../data/dashboardData";
 import type { AlertItem, ScoreCardData, ValueMapPoint } from "../data/dashboardData";
 
+const alertNumericId = (id: string) => parseInt(id, 10) || 0;
+
+const categoryDisplayIndex = (category: string) => {
+  const i = ALERT_CATEGORY_DISPLAY_ORDER.indexOf(category);
+  return i === -1 ? 999 : i;
+};
+
+/** カテゴリタブ順 → 同一カテゴリ内は優先順位 → id */
+const compareAlertByCategoryThenPriority = (a: AlertItem, b: AlertItem) => {
+  const byCat = categoryDisplayIndex(a.category) - categoryDisplayIndex(b.category);
+  if (byCat !== 0) return byCat;
+  if (a.priority !== b.priority) return a.priority - b.priority;
+  return alertNumericId(a.id) - alertNumericId(b.id);
+};
+
 const Dashboard = () => {
   const [activeCategory, setActiveCategory] = useState("すべて");
   const [period, setPeriod] = useState<"month" | "all">("month");
 
+  /** 全件から優先順位で選んだ共通の上位 N 件（各タブでこの集合を元にする） */
+  const priorityTopPool = useMemo(
+    () =>
+      [...ALERTS]
+        .sort((a, b) =>
+          a.priority !== b.priority
+            ? a.priority - b.priority
+            : alertNumericId(a.id) - alertNumericId(b.id),
+        )
+        .slice(0, DISPLAY_ALERT_LIMIT),
+    [],
+  );
+
   const filteredAlerts = useMemo(() => {
-    if (activeCategory === "すべて") return ALERTS;
-    return ALERTS.filter((a) => a.category === activeCategory);
-  }, [activeCategory]);
+    if (activeCategory === "すべて") {
+      return [...priorityTopPool].sort(compareAlertByCategoryThenPriority);
+    }
+    return [...priorityTopPool]
+      .filter((a) => a.category === activeCategory)
+      .sort((a, b) =>
+        a.priority !== b.priority
+          ? a.priority - b.priority
+          : alertNumericId(a.id) - alertNumericId(b.id),
+      );
+  }, [activeCategory, priorityTopPool]);
 
   const unreadCount = filteredAlerts.length;
 
@@ -88,7 +126,8 @@ const Dashboard = () => {
               アラート一覧
             </span>
             <span className="text-[11px] text-gray-400">
-              No.1〜No.{ALERTS.length}まで
+              優先順位の高い順に最大{DISPLAY_ALERT_LIMIT}件表示（全
+              {ALERTS.length}項目より）
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -302,7 +341,7 @@ const AlertRow = ({ alert }: AlertRowProps) => {
     <li className="px-4 py-3 hover:bg-gray-50">
       <div className="flex items-start gap-3">
         <span className="text-xs font-medium text-gray-400 w-6 flex-shrink-0 pt-0.5">
-          {alert.number}
+          {alert.id}
         </span>
         <span className="flex-shrink-0 mt-0.5">
           {alert.status === "warning" ? (

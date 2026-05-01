@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type {
   Employee,
@@ -6,14 +6,7 @@ import type {
   EmployeeRole,
 } from "../types/survey";
 import { SAMPLE_EMPLOYEES } from "../data/surveyQuestions";
-
-const JOB_TITLE_OPTIONS: EmployeeRole[] = [
-  "社長",
-  "役員",
-  "部長",
-  "課長",
-  "社員",
-];
+import { useEmployeeRoleLabels } from "../contexts/EmployeeRoleLabelsContext";
 
 const APP_ROLE_OPTIONS: EmployeeAppRole[] = ["一般ユーザー", "管理者"];
 
@@ -84,7 +77,7 @@ const buildInitialForm = (
   appRole: "一般ユーザー",
   departmentDivision: divisions[0] ?? "",
   departmentSection: sections[0] ?? "",
-  role: "社員",
+  role: "staff",
   joinedAt: "",
 });
 
@@ -279,6 +272,13 @@ function MasterListEditor({
 }
 
 const EmployeeRegistration = () => {
+  const {
+    getEmployeeRoleLabel,
+    labels,
+    setDisplayLabel,
+    defaultLabels,
+    rolesInOrder,
+  } = useEmployeeRoleLabels();
   const [employees, setEmployees] = useState<Employee[]>(SAMPLE_EMPLOYEES);
 
   const [divisionMasters, setDivisionMasters] = useState(() =>
@@ -318,6 +318,58 @@ const EmployeeRegistration = () => {
   const [editErrorMessage, setEditErrorMessage] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [showMasterEditor, setShowMasterEditor] = useState(false);
+  const [showRoleLabelEditor, setShowRoleLabelEditor] = useState(false);
+  const roleLabelEditorWasOpenRef = useRef(false);
+  const [roleLabelDraft, setRoleLabelDraft] = useState<
+    Record<EmployeeRole, string>
+  >(() =>
+    Object.fromEntries(rolesInOrder.map((r) => [r, defaultLabels[r]])) as Record<
+      EmployeeRole,
+      string
+    >
+  );
+
+  useEffect(() => {
+    if (showRoleLabelEditor) {
+      if (!roleLabelEditorWasOpenRef.current) {
+        setRoleLabelDraft(
+          Object.fromEntries(rolesInOrder.map((r) => [r, labels[r]])) as Record<
+            EmployeeRole,
+            string
+          >
+        );
+        roleLabelEditorWasOpenRef.current = true;
+      }
+    } else {
+      roleLabelEditorWasOpenRef.current = false;
+    }
+  }, [showRoleLabelEditor, labels, rolesInOrder]);
+
+  const saveRoleLabels = () => {
+    for (const role of rolesInOrder) {
+      setDisplayLabel(role, roleLabelDraft[role] ?? "");
+    }
+    setShowRoleLabelEditor(false);
+  };
+
+  const hasUnsavedRoleLabelChanges = useMemo(
+    () =>
+      showRoleLabelEditor &&
+      rolesInOrder.some(
+        (r) => (roleLabelDraft[r] ?? "") !== (labels[r] ?? "")
+      ),
+    [showRoleLabelEditor, roleLabelDraft, labels, rolesInOrder]
+  );
+
+  /** 下書きに既定語から外れた項目があるときだけ「すべて既定に戻す」を出す */
+  const showRoleLabelResetToDefaultsButton = useMemo(
+    () =>
+      showRoleLabelEditor &&
+      rolesInOrder.some(
+        (r) => (roleLabelDraft[r] ?? "") !== defaultLabels[r]
+      ),
+    [showRoleLabelEditor, roleLabelDraft, defaultLabels, rolesInOrder]
+  );
 
   const filteredEmployees = employees.filter((emp) => {
     if (
@@ -333,7 +385,9 @@ const EmployeeRegistration = () => {
       emp.email.toLowerCase().includes(term) ||
       emp.departmentDivision.toLowerCase().includes(term) ||
       emp.departmentSection.toLowerCase().includes(term) ||
-      emp.appRole.includes(term)
+      emp.appRole.includes(term) ||
+      getEmployeeRoleLabel(emp.role).toLowerCase().includes(term) ||
+      emp.role.toLowerCase().includes(term)
     );
   });
 
@@ -515,43 +569,6 @@ const EmployeeRegistration = () => {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [editModalEmployee, deleteTarget]);
 
-  const handleCsvExport = () => {
-    const header = [
-      "表示名",
-      "メールアドレス",
-      "ロール",
-      "部署(部)",
-      "部署(課)",
-      "役職",
-      "入社年月日",
-    ];
-    const rows = employees.map((e) => [
-      e.displayName,
-      e.email,
-      e.appRole,
-      e.departmentDivision,
-      e.departmentSection,
-      e.role,
-      e.joinedAt,
-    ]);
-    const csv = [header, ...rows]
-      .map((row) =>
-        row
-          .map((value) => `"${String(value).replace(/"/g, '""')}"`)
-          .join(",")
-      )
-      .join("\n");
-    const blob = new Blob([`\uFEFF${csv}`], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "employees.csv";
-    link.click();
-    URL.revokeObjectURL(url);
-  };
-
   const addDivision = (label: string) => {
     if (!label) return "名称を入力してください";
     if (divisionMasters.includes(label)) return "同じ名前が既にあります";
@@ -643,67 +660,6 @@ const EmployeeRegistration = () => {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 shadow-sm"
-          >
-            <svg
-              className="h-4 w-4 text-gray-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-              />
-            </svg>
-            テンプレート
-          </button>
-          <button
-            type="button"
-            onClick={handleCsvExport}
-            className="inline-flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 shadow-sm"
-          >
-            <svg
-              className="h-4 w-4 text-gray-500"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
-              />
-            </svg>
-            CSVエクスポート
-          </button>
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 px-3 py-2 border border-primary rounded-md text-sm font-medium text-primary bg-white hover:bg-primary/5"
-          >
-            <svg
-              className="h-4 w-4"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
-            CSVインポート
-          </button>
-          <button
-            type="button"
             onClick={() => {
               setShowForm((prev) => !prev);
               setForm(buildInitialForm(divisionMasters, sectionMasters));
@@ -716,6 +672,13 @@ const EmployeeRegistration = () => {
           </button>
           <button
             type="button"
+            onClick={() => setShowRoleLabelEditor((p) => !p)}
+            className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 shadow-sm"
+          >
+            役職の表示名を編集
+          </button>
+          <button
+            type="button"
             onClick={() => setShowMasterEditor((p) => !p)}
             className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 shadow-sm"
           >
@@ -723,6 +686,76 @@ const EmployeeRegistration = () => {
           </button>
         </div>
       </div>
+
+      {showRoleLabelEditor && (
+        <div className="bg-white shadow rounded-lg border border-gray-100 p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">
+                役職の表示名
+              </h3>
+              <p className="mt-1 text-xs text-gray-500 max-w-xl">
+                5階層の役職区分は固定です。一覧やプルダウンに表示する文言だけ変更できます。入力後「保存」で反映され、このブラウザに保存されます。
+              </p>
+            </div>
+            <div className="flex flex-shrink-0 flex-wrap items-center gap-x-4 gap-y-2 justify-end sm:justify-start sm:ml-auto">
+              {showRoleLabelResetToDefaultsButton && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRoleLabelDraft(
+                      Object.fromEntries(
+                        rolesInOrder.map((r) => [r, defaultLabels[r]])
+                      ) as Record<EmployeeRole, string>
+                    )
+                  }
+                  className="text-sm font-medium text-gray-600 hover:text-gray-900 underline"
+                >
+                  すべて既定に戻す
+                </button>
+              )}
+              {hasUnsavedRoleLabelChanges && (
+                <button
+                  type="button"
+                  onClick={saveRoleLabels}
+                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary/90"
+                >
+                  保存
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {rolesInOrder.map((role) => (
+              <div key={role}>
+                <label
+                  className="block text-xs font-medium text-gray-500 mb-1"
+                  htmlFor={`role-label-${role}`}
+                >
+                  <code className="text-[11px] text-gray-600 bg-gray-100 px-1 rounded">
+                    {role}
+                  </code>
+                  <span className="ml-2 text-gray-400">
+                    既定: {defaultLabels[role]}
+                  </span>
+                </label>
+                <input
+                  id={`role-label-${role}`}
+                  type="text"
+                  value={roleLabelDraft[role] ?? ""}
+                  onChange={(e) =>
+                    setRoleLabelDraft((prev) => ({
+                      ...prev,
+                      [role]: e.target.value,
+                    }))
+                  }
+                  className="mt-0.5 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 text-sm text-gray-900"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {showMasterEditor && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -904,9 +937,9 @@ const EmployeeRegistration = () => {
                   onChange={handleChange}
                   className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
                 >
-                  {JOB_TITLE_OPTIONS.map((r) => (
+                  {rolesInOrder.map((r) => (
                     <option key={r} value={r}>
-                      {r}
+                      {getEmployeeRoleLabel(r)}
                     </option>
                   ))}
                 </select>
@@ -1006,7 +1039,7 @@ const EmployeeRegistration = () => {
                         {emp.departmentSection}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                        {emp.role}
+                        {getEmployeeRoleLabel(emp.role)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
                         {emp.joinedAt}
@@ -1208,9 +1241,9 @@ const EmployeeRegistration = () => {
                     onChange={handleEditChange}
                     className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
                   >
-                    {JOB_TITLE_OPTIONS.map((r) => (
+                    {rolesInOrder.map((r) => (
                       <option key={r} value={r}>
-                        {r}
+                        {getEmployeeRoleLabel(r)}
                       </option>
                     ))}
                   </select>
