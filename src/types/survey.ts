@@ -26,6 +26,14 @@ export interface SurveyQuestion {
   text: string;
 }
 
+/** 配信先1人あたりの回答進捗（メール配信後、kizunaviで回答したか） */
+export interface SurveyRecipientProgress {
+  employeeId: string;
+  hasResponded: boolean;
+  /** 回答日（YYYY-MM-DD、未回答時は未定義） */
+  respondedAt?: string;
+}
+
 export interface SurveyDistribution {
   id: string;
   title: string;
@@ -35,8 +43,8 @@ export interface SurveyDistribution {
   expirationDate: string;
   status: "draft" | "active" | "expired";
   createdAt: string;
-  recipientCount: number;
-  responseCount: number;
+  /** 配信先ごとの回答状況（recipientCount / responseCount はこれから算出） */
+  recipients: SurveyRecipientProgress[];
 }
 
 export interface SurveyAnswer {

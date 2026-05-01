@@ -1,7 +1,9 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router-dom";
-import type { SurveyDistribution as SurveyDistributionType } from "../types/survey";
+import type {
+  SurveyDistribution as SurveyDistributionType,
+  SurveyRecipientProgress,
+} from "../types/survey";
 import { SAMPLE_EMPLOYEES } from "../data/surveyQuestions";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -10,6 +12,23 @@ const addDays = (dateStr: string, days: number) => {
   const date = new Date(dateStr);
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+};
+
+const employeeById = new Map(SAMPLE_EMPLOYEES.map((e) => [e.id, e]));
+
+/** デモ用: 配信先全員分の進捗を生成（回答済みは employeeId と回答日を指定） */
+const makeRecipients = (
+  responded: { id: string; at: string }[]
+): SurveyRecipientProgress[] => {
+  const map = new Map(responded.map((r) => [r.id, r.at]));
+  return SAMPLE_EMPLOYEES.map((e) => {
+    const at = map.get(e.id);
+    return {
+      employeeId: e.id,
+      hasResponded: at !== undefined,
+      respondedAt: at,
+    };
+  });
 };
 
 const initialSurveys: SurveyDistributionType[] = [
@@ -22,8 +41,10 @@ const initialSurveys: SurveyDistributionType[] = [
     expirationDate: "2026-05-15",
     status: "active",
     createdAt: "2026-03-20",
-    recipientCount: SAMPLE_EMPLOYEES.length,
-    responseCount: 2,
+    recipients: makeRecipients([
+      { id: "emp-001", at: "2026-04-02" },
+      { id: "emp-002", at: "2026-04-03" },
+    ]),
   },
   {
     id: "srv-002",
@@ -34,8 +55,10 @@ const initialSurveys: SurveyDistributionType[] = [
     expirationDate: "2026-04-29",
     status: "expired",
     createdAt: "2026-04-10",
-    recipientCount: SAMPLE_EMPLOYEES.length,
-    responseCount: 2,
+    recipients: makeRecipients([
+      { id: "emp-003", at: "2026-04-16" },
+      { id: "emp-007", at: "2026-04-17" },
+    ]),
   },
 ];
 
@@ -45,11 +68,22 @@ const initialForm = {
   expirationDate: addDays(today(), 14),
 };
 
+/** 回答画面への絶対URL（Vite の base を含む） */
+const buildSurveyAnswerUrl = (surveyId: string) =>
+  new URL(
+    `${import.meta.env.BASE_URL}survey/${surveyId}`,
+    window.location.origin
+  ).href;
+
 const SurveyDistribution = () => {
   const [surveys, setSurveys] = useState<SurveyDistributionType[]>(initialSurveys);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(initialForm);
   const [errorMessage, setErrorMessage] = useState("");
+  const [distributedSurveyUrl, setDistributedSurveyUrl] = useState<
+    string | null
+  >(null);
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -84,13 +118,28 @@ const SurveyDistribution = () => {
       expirationDate: form.expirationDate,
       status: "active",
       createdAt: today(),
-      recipientCount: SAMPLE_EMPLOYEES.length,
-      responseCount: 0,
+      recipients: SAMPLE_EMPLOYEES.map((e) => ({
+        employeeId: e.id,
+        hasResponded: false,
+      })),
     };
 
     setSurveys((prev) => [newSurvey, ...prev]);
     setForm(initialForm);
     setShowForm(false);
+    setDistributedSurveyUrl(buildSurveyAnswerUrl(newSurvey.id));
+    setCopyFeedback(false);
+  };
+
+  const copyDistributedUrl = async () => {
+    if (!distributedSurveyUrl) return;
+    try {
+      await navigator.clipboard.writeText(distributedSurveyUrl);
+      setCopyFeedback(true);
+      window.setTimeout(() => setCopyFeedback(false), 2000);
+    } catch {
+      setCopyFeedback(false);
+    }
   };
 
   const getStatusInfo = (survey: SurveyDistributionType) => {
@@ -133,6 +182,40 @@ const SurveyDistribution = () => {
             {showForm ? "配信フォームを閉じる" : "+ 新規サーベイを配信"}
           </button>
         </div>
+
+        {distributedSurveyUrl && (
+          <div className="border-t border-gray-200 px-4 py-4 sm:px-6 bg-green-50">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-green-900">
+                  配信が完了しました。以下のURLからサーベイに回答できます（メール文面に含めてください）。
+                </p>
+                <div className="mt-2 flex flex-col sm:flex-row sm:items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={distributedSurveyUrl}
+                    className="block w-full min-w-0 rounded-md border border-green-200 bg-white py-2 px-3 text-sm text-gray-900 shadow-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={copyDistributedUrl}
+                    className="flex-shrink-0 px-4 py-2 rounded-md border border-green-700 text-sm font-medium text-green-800 bg-white hover:bg-green-100"
+                  >
+                    {copyFeedback ? "コピーしました" : "URLをコピー"}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDistributedSurveyUrl(null)}
+                className="text-sm text-green-800 hover:text-green-950 underline sm:no-underline sm:hover:underline"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        )}
 
         {showForm && (
           <div className="border-t border-gray-200 px-4 py-5 sm:px-6 bg-gray-50">
@@ -238,52 +321,124 @@ const SurveyDistribution = () => {
             surveys.map((survey) => {
               const statusInfo = getStatusInfo(survey);
               const remaining = computeRemainingDays(survey.expirationDate);
+              const recipientCount = survey.recipients.length;
+              const responseCount = survey.recipients.filter(
+                (r) => r.hasResponded
+              ).length;
               const responseRate =
-                survey.recipientCount === 0
+                recipientCount === 0
                   ? 0
-                  : Math.round(
-                      (survey.responseCount / survey.recipientCount) * 100
-                    );
+                  : Math.round((responseCount / recipientCount) * 100);
+              const answered = survey.recipients.filter((r) => r.hasResponded);
+              const pending = survey.recipients.filter((r) => !r.hasResponded);
               return (
                 <div key={survey.id} className="px-4 py-4 sm:px-6">
-                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-base font-semibold text-gray-900">
-                          {survey.title}
-                        </h3>
-                        <span
-                          className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${statusInfo.className}`}
-                        >
-                          {statusInfo.label}
-                        </span>
-                      </div>
-                      {survey.description && (
-                        <p className="mt-1 text-sm text-gray-600">
-                          {survey.description}
-                        </p>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                        <span>有効期限: {survey.expirationDate}</span>
-                        {statusInfo.label === "配信中" && (
-                          <span className="text-green-700">
-                            残り{Math.max(remaining, 0)}日
-                          </span>
-                        )}
-                        <span>
-                          回答状況: {survey.responseCount}/{survey.recipientCount}（{responseRate}%）
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex-shrink-0">
-                      <Link
-                        to={`/survey/${survey.id}`}
-                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-primary hover:bg-primary/90"
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-semibold text-gray-900">
+                        {survey.title}
+                      </h3>
+                      <span
+                        className={`inline-flex px-2 py-0.5 text-xs font-medium rounded-full ${statusInfo.className}`}
                       >
-                        サーベイを開く
-                      </Link>
+                        {statusInfo.label}
+                      </span>
+                    </div>
+                    {survey.description && (
+                      <p className="mt-1 text-sm text-gray-600">
+                        {survey.description}
+                      </p>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                      <span>有効期限: {survey.expirationDate}</span>
+                      {statusInfo.label === "配信中" && (
+                        <span className="text-green-700">
+                          残り{Math.max(remaining, 0)}日
+                        </span>
+                      )}
+                      <span>
+                        回答状況: {responseCount}/{recipientCount}（{responseRate}%）
+                      </span>
                     </div>
                   </div>
+                  <details className="mt-4 group rounded-lg border border-gray-200 bg-gray-50/80">
+                    <summary className="cursor-pointer list-none px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg flex items-center gap-2 [&::-webkit-details-marker]:hidden">
+                      <span className="inline-block w-4 text-center text-gray-400 group-open:rotate-90 transition-transform">
+                        ▶
+                      </span>
+                      配信先の回答状況（回答済 {answered.length} 名 / 未回答{" "}
+                      {pending.length} 名）
+                    </summary>
+                    <div className="px-3 pb-3 pt-1 grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-green-800 mb-2">
+                          回答済み
+                        </h4>
+                        {answered.length === 0 ? (
+                          <p className="text-xs text-gray-500">
+                            まだ回答したユーザーはいません
+                          </p>
+                        ) : (
+                          <ul className="space-y-1.5 text-sm">
+                            {answered.map((r) => {
+                              const emp = employeeById.get(r.employeeId);
+                              return (
+                                <li
+                                  key={r.employeeId}
+                                  className="flex flex-wrap items-baseline gap-x-2 gap-y-0"
+                                >
+                                  <span className="font-medium text-gray-900">
+                                    {emp?.displayName ?? r.employeeId}
+                                  </span>
+                                  {emp && (
+                                    <span className="text-xs text-gray-500">
+                                      {emp.departmentSection} · {emp.role}
+                                    </span>
+                                  )}
+                                  {r.respondedAt && (
+                                    <span className="text-xs text-gray-500">
+                                      回答日 {r.respondedAt}
+                                    </span>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-amber-800 mb-2">
+                          未回答
+                        </h4>
+                        {pending.length === 0 ? (
+                          <p className="text-xs text-gray-500">
+                            全員が回答済みです
+                          </p>
+                        ) : (
+                          <ul className="space-y-1.5 text-sm">
+                            {pending.map((r) => {
+                              const emp = employeeById.get(r.employeeId);
+                              return (
+                                <li
+                                  key={r.employeeId}
+                                  className="flex flex-wrap items-baseline gap-x-2 gap-y-0"
+                                >
+                                  <span className="font-medium text-gray-900">
+                                    {emp?.displayName ?? r.employeeId}
+                                  </span>
+                                  {emp && (
+                                    <span className="text-xs text-gray-500">
+                                      {emp.email}
+                                    </span>
+                                  )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </details>
                 </div>
               );
             })
