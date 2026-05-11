@@ -10,34 +10,39 @@ import { useEmployeeRoleLabels } from "../contexts/EmployeeRoleLabelsContext";
 
 const APP_ROLE_OPTIONS: EmployeeAppRole[] = ["一般ユーザー", "管理者"];
 
-const DEFAULT_DIVISION_MASTERS = [
-  "営業部",
-  "企画部",
-  "開発部",
-  "人事部",
-  "経理部",
-  "マーケ部",
-  "管理部",
-  "法務部",
+type DivisionWithSections = {
+  name: string;
+  sections: string[];
+};
+
+const DEFAULT_DEPARTMENT_HIERARCHY: DivisionWithSections[] = [
+  { name: "営業部", sections: ["営業1課", "営業2課"] },
+  { name: "企画部", sections: ["企画課"] },
+  { name: "開発部", sections: ["開発1課", "開発2課"] },
+  { name: "人事部", sections: ["人事課"] },
+  { name: "経理部", sections: ["経理課"] },
+  { name: "マーケ部", sections: ["デジマ課"] },
+  { name: "管理部", sections: [] },
+  { name: "法務部", sections: [] },
 ];
 
-const DEFAULT_SECTION_MASTERS = [
-  "営業1課",
-  "営業2課",
-  "企画課",
-  "開発1課",
-  "開発2課",
-  "人事課",
-  "経理課",
-  "デジマ課",
-];
-
-const uniqMerged = (base: string[], fromEmployees: Iterable<string>) => {
-  const set = new Set(base);
-  for (const x of fromEmployees) {
-    if (x) set.add(x);
+const buildInitialHierarchy = (
+  base: DivisionWithSections[],
+  employees: Employee[]
+): DivisionWithSections[] => {
+  const result = base.map((d) => ({ name: d.name, sections: [...d.sections] }));
+  for (const emp of employees) {
+    if (!emp.departmentDivision) continue;
+    let div = result.find((d) => d.name === emp.departmentDivision);
+    if (!div) {
+      div = { name: emp.departmentDivision, sections: [] };
+      result.push(div);
+    }
+    if (emp.departmentSection && !div.sections.includes(emp.departmentSection)) {
+      div.sections.push(emp.departmentSection);
+    }
   }
-  return [...set];
+  return result;
 };
 
 const AVATAR_PALETTES = [
@@ -69,14 +74,13 @@ type EmployeeFormState = {
 };
 
 const buildInitialForm = (
-  divisions: string[],
-  sections: string[]
+  hierarchy: DivisionWithSections[]
 ): EmployeeFormState => ({
   displayName: "",
   email: "",
   appRole: "一般ユーザー",
-  departmentDivision: divisions[0] ?? "",
-  departmentSection: sections[0] ?? "",
+  departmentDivision: hierarchy[0]?.name ?? "",
+  departmentSection: hierarchy[0]?.sections[0] ?? "",
   role: "staff",
   joinedAt: "",
 });
@@ -117,156 +121,252 @@ const isCurrentFiscalYear = (joinedAt: string) => {
   return date >= fyStart && date < fyEnd;
 };
 
-function MasterListEditor({
-  title,
-  items,
-  addPlaceholder,
-  onAdd,
-  onRename,
-  onDelete,
-  deleteBlockedMessage,
+function HierarchyMasterEditor({
+  hierarchy,
+  onAddDivision,
+  onRenameDivision,
+  onDeleteDivision,
+  onAddSection,
+  onRenameSection,
+  onDeleteSection,
 }: {
-  title: string;
-  items: string[];
-  addPlaceholder: string;
-  onAdd: (label: string) => void | string;
-  onRename: (from: string, to: string) => void | string;
-  onDelete: (label: string) => void | string;
-  deleteBlockedMessage: string;
+  hierarchy: DivisionWithSections[];
+  onAddDivision: (name: string) => void | string;
+  onRenameDivision: (from: string, to: string) => void | string;
+  onDeleteDivision: (name: string) => void | string;
+  onAddSection: (divisionName: string, sectionName: string) => void | string;
+  onRenameSection: (divisionName: string, from: string, to: string) => void | string;
+  onDeleteSection: (divisionName: string, sectionName: string) => void | string;
 }) {
-  const [draft, setDraft] = useState("");
-  const [error, setError] = useState("");
-  const [editingLabel, setEditingLabel] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
+  const [newDivDraft, setNewDivDraft] = useState("");
+  const [divError, setDivError] = useState("");
+  const [expandedDivs, setExpandedDivs] = useState<Set<string>>(
+    () => new Set(hierarchy.map((d) => d.name))
+  );
+  const [editingDiv, setEditingDiv] = useState<string | null>(null);
+  const [divRenameDraft, setDivRenameDraft] = useState("");
+  const [sectionDrafts, setSectionDrafts] = useState<Record<string, string>>({});
+  const [sectionErrors, setSectionErrors] = useState<Record<string, string>>({});
+  const [editingSec, setEditingSec] = useState<{ div: string; sec: string } | null>(null);
+  const [secRenameDraft, setSecRenameDraft] = useState("");
 
-  const clearFeedback = () => setError("");
+  const toggleDiv = (name: string) =>
+    setExpandedDivs((prev) => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
 
-  const submitAdd = () => {
-    clearFeedback();
-    const msg = onAdd(draft.trim());
+  const submitAddDiv = () => {
+    setDivError("");
+    const msg = onAddDivision(newDivDraft.trim());
+    if (typeof msg === "string") { setDivError(msg); return; }
+    setExpandedDivs((prev) => new Set([...prev, newDivDraft.trim()]));
+    setNewDivDraft("");
+  };
+
+  const submitRenameDiv = (from: string) => {
+    setDivError("");
+    const msg = onRenameDivision(from, divRenameDraft.trim());
+    if (typeof msg === "string") { setDivError(msg); return; }
+    setEditingDiv(null);
+    setDivRenameDraft("");
+  };
+
+  const submitAddSection = (divName: string) => {
+    setSectionErrors((prev) => ({ ...prev, [divName]: "" }));
+    const draft = (sectionDrafts[divName] ?? "").trim();
+    const msg = onAddSection(divName, draft);
     if (typeof msg === "string") {
-      setError(msg);
+      setSectionErrors((prev) => ({ ...prev, [divName]: msg }));
       return;
     }
-    setDraft("");
+    setSectionDrafts((prev) => ({ ...prev, [divName]: "" }));
+  };
+
+  const submitRenameSection = (divName: string, from: string) => {
+    setSectionErrors((prev) => ({ ...prev, [divName]: "" }));
+    const msg = onRenameSection(divName, from, secRenameDraft.trim());
+    if (typeof msg === "string") {
+      setSectionErrors((prev) => ({ ...prev, [divName]: msg }));
+      return;
+    }
+    setEditingSec(null);
+    setSecRenameDraft("");
   };
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 sm:p-4">
-      <h4 className="text-xs font-semibold text-gray-700 mb-3">{title}</h4>
-      <ul className="space-y-1.5 max-h-48 overflow-y-auto mb-3">
-        {items.length === 0 ? (
-          <li className="text-xs text-gray-400">項目がありません</li>
-        ) : (
-          items.map((label) => (
+    <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3 sm:p-4 space-y-3">
+      <h4 className="text-xs font-semibold text-gray-700">
+        部署マスタ編集
+      </h4>
+
+      <ul className="space-y-2">
+        {hierarchy.map((div) => {
+          const isExpanded = expandedDivs.has(div.name);
+          const isEditingThisDiv = editingDiv === div.name;
+          return (
             <li
-              key={label}
-              className="flex items-center gap-2 text-sm text-gray-800 flex-wrap"
+              key={div.name}
+              className="rounded-md border border-gray-200 bg-white overflow-hidden"
             >
-              {editingLabel === label ? (
-                <>
-                  <input
-                    type="text"
-                    value={renameDraft}
-                    onChange={(e) => setRenameDraft(e.target.value)}
-                    className="flex-1 min-w-[120px] border border-gray-300 rounded px-2 py-1 text-sm"
-                  />
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50"
-                    onClick={() => {
-                      clearFeedback();
-                      const msg = onRename(label, renameDraft.trim());
-                      if (typeof msg === "string") {
-                        setError(msg);
-                        return;
+              {/* 部ヘッダー行 */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => toggleDiv(div.name)}
+                  className="text-gray-400 hover:text-gray-700 w-4 flex-shrink-0 text-xs"
+                >
+                  {isExpanded ? "▼" : "▶"}
+                </button>
+                {isEditingThisDiv ? (
+                  <>
+                    <input
+                      type="text"
+                      value={divRenameDraft}
+                      onChange={(e) => setDivRenameDraft(e.target.value)}
+                      className="flex-1 min-w-[120px] border border-gray-300 rounded px-2 py-0.5 text-sm"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); submitRenameDiv(div.name); }
+                        if (e.key === "Escape") { setEditingDiv(null); setDivRenameDraft(""); }
+                      }}
+                      autoFocus
+                    />
+                    <button type="button" onClick={() => submitRenameDiv(div.name)} className="text-xs px-2 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50">保存</button>
+                    <button type="button" onClick={() => { setEditingDiv(null); setDivRenameDraft(""); }} className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-800">キャンセル</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm font-semibold text-gray-800">{div.name}</span>
+                    <span className="text-[11px] text-gray-400 mr-1">{div.sections.length}課</span>
+                    <button
+                      type="button"
+                      onClick={() => { setEditingDiv(div.name); setDivRenameDraft(div.name); setDivError(""); }}
+                      className="text-xs px-2 py-0.5 border border-gray-200 rounded bg-white hover:bg-gray-50"
+                    >変更</button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const msg = onDeleteDivision(div.name);
+                        if (typeof msg === "string") window.alert(msg);
+                      }}
+                      className="text-xs px-2 py-0.5 border border-red-100 rounded text-red-600 hover:bg-red-50"
+                    >削除</button>
+                  </>
+                )}
+              </div>
+
+              {/* 課リスト */}
+              {isExpanded && (
+                <div className="px-3 py-2 space-y-1.5">
+                  {div.sections.length === 0 && (
+                    <p className="text-xs text-gray-400 pl-4">課がまだ登録されていません</p>
+                  )}
+                  {div.sections.map((sec) => {
+                    const isEditingThisSec =
+                      editingSec?.div === div.name && editingSec?.sec === sec;
+                    return (
+                      <div key={sec} className="flex items-center gap-2 pl-4">
+                        <span className="text-gray-300 text-xs flex-shrink-0">└</span>
+                        {isEditingThisSec ? (
+                          <>
+                            <input
+                              type="text"
+                              value={secRenameDraft}
+                              onChange={(e) => setSecRenameDraft(e.target.value)}
+                              className="flex-1 min-w-[100px] border border-gray-300 rounded px-2 py-0.5 text-sm"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); submitRenameSection(div.name, sec); }
+                                if (e.key === "Escape") { setEditingSec(null); setSecRenameDraft(""); }
+                              }}
+                              autoFocus
+                            />
+                            <button type="button" onClick={() => submitRenameSection(div.name, sec)} className="text-xs px-2 py-0.5 border border-gray-300 rounded bg-white hover:bg-gray-50">保存</button>
+                            <button type="button" onClick={() => { setEditingSec(null); setSecRenameDraft(""); }} className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-800">キャンセル</button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex-1 text-sm text-gray-700">{sec}</span>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingSec({ div: div.name, sec }); setSecRenameDraft(sec); setSectionErrors((p) => ({ ...p, [div.name]: "" })); }}
+                              className="text-xs px-2 py-0.5 border border-gray-200 rounded bg-white hover:bg-gray-50"
+                            >変更</button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const msg = onDeleteSection(div.name, sec);
+                                if (typeof msg === "string") window.alert(msg);
+                              }}
+                              className="text-xs px-2 py-0.5 border border-red-100 rounded text-red-600 hover:bg-red-50"
+                            >削除</button>
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {/* 課を追加 */}
+                  <div className="flex items-center gap-2 pl-4 mt-2">
+                    <span className="text-gray-200 text-xs flex-shrink-0">└</span>
+                    <input
+                      type="text"
+                      value={sectionDrafts[div.name] ?? ""}
+                      onChange={(e) =>
+                        setSectionDrafts((prev) => ({ ...prev, [div.name]: e.target.value }))
                       }
-                      setEditingLabel(null);
-                      setRenameDraft("");
-                    }}
-                  >
-                    保存
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-0.5 text-gray-500 hover:text-gray-800"
-                    onClick={() => {
-                      setEditingLabel(null);
-                      setRenameDraft("");
-                      clearFeedback();
-                    }}
-                  >
-                    キャンセル
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="flex-1 min-w-[100px]">{label}</span>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-0.5 border border-gray-200 rounded bg-white hover:bg-gray-50"
-                    onClick={() => {
-                      setEditingLabel(label);
-                      setRenameDraft(label);
-                      clearFeedback();
-                    }}
-                  >
-                    変更
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs px-2 py-0.5 border border-red-100 rounded text-red-600 hover:bg-red-50"
-                    onClick={() => {
-                      clearFeedback();
-                      const msg = onDelete(label);
-                      if (typeof msg === "string") {
-                        setError(msg);
-                        return;
-                      }
-                      if (editingLabel === label) {
-                        setEditingLabel(null);
-                        setRenameDraft("");
-                      }
-                    }}
-                  >
-                    削除
-                  </button>
-                </>
+                      placeholder="新しい課の名称"
+                      className="flex-1 min-w-[120px] border border-dashed border-gray-300 rounded px-2 py-1 text-xs"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); submitAddSection(div.name); }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => submitAddSection(div.name)}
+                      className="text-xs px-2.5 py-1 rounded bg-gray-700 text-white hover:bg-gray-800 whitespace-nowrap"
+                    >
+                      ＋課を追加
+                    </button>
+                  </div>
+                  {sectionErrors[div.name] && (
+                    <p className="text-xs text-red-600 pl-10" role="alert">
+                      {sectionErrors[div.name]}
+                    </p>
+                  )}                </div>
               )}
             </li>
-          ))
-        )}
+          );
+        })}
       </ul>
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2 flex-wrap items-center">
-          <input
-            type="text"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder={addPlaceholder}
-            className="flex-1 min-w-[140px] border border-gray-300 rounded-md shadow-sm py-1.5 px-2 text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submitAdd();
-              }
-            }}
-          />
-          <button
-            type="button"
-            onClick={submitAdd}
-            className="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-gray-800 whitespace-nowrap"
-          >
-            追加
-          </button>
-        </div>
-        {error && (
-          <p className="text-xs text-red-600" role="alert">
-            {error}
-          </p>
-        )}
-        <p className="text-[11px] text-gray-400">{deleteBlockedMessage}</p>
+
+      {divError && (
+        <p className="text-xs text-red-600" role="alert">{divError}</p>
+      )}
+
+      {/* 部を追加 */}
+      <div className="flex items-center gap-2 pt-1 border-t border-gray-200">
+        <input
+          type="text"
+          value={newDivDraft}
+          onChange={(e) => setNewDivDraft(e.target.value)}
+          placeholder="新しい部の名称（例: 品質保証部）"
+          className="flex-1 min-w-[160px] border border-gray-300 rounded-md shadow-sm py-1.5 px-2 text-sm"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); submitAddDiv(); }
+          }}
+        />
+        <button
+          type="button"
+          onClick={submitAddDiv}
+          className="text-xs px-3 py-1.5 rounded-md bg-gray-900 text-white hover:bg-gray-800 whitespace-nowrap"
+        >
+          ＋部を追加
+        </button>
       </div>
+      <p className="text-[11px] text-gray-400">
+        使用中の部・課は削除できません。先に該当ユーザーの部署を変更してください。
+      </p>
     </div>
   );
 }
@@ -281,39 +381,23 @@ const EmployeeRegistration = () => {
   } = useEmployeeRoleLabels();
   const [employees, setEmployees] = useState<Employee[]>(SAMPLE_EMPLOYEES);
 
-  const [divisionMasters, setDivisionMasters] = useState(() =>
-    uniqMerged(
-      DEFAULT_DIVISION_MASTERS,
-      SAMPLE_EMPLOYEES.map((e) => e.departmentDivision)
-    )
+  const [departmentHierarchy, setDepartmentHierarchy] = useState<DivisionWithSections[]>(() =>
+    buildInitialHierarchy(DEFAULT_DEPARTMENT_HIERARCHY, SAMPLE_EMPLOYEES)
   );
-  const [sectionMasters, setSectionMasters] = useState(() =>
-    uniqMerged(
-      DEFAULT_SECTION_MASTERS,
-      SAMPLE_EMPLOYEES.map((e) => e.departmentSection)
-    )
-  );
+
+  const divisionMasters = departmentHierarchy.map((d) => d.name);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [activeDivision, setActiveDivision] = useState<string>("すべて");
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<EmployeeFormState>(() =>
-    buildInitialForm(
-      uniqMerged(
-        DEFAULT_DIVISION_MASTERS,
-        SAMPLE_EMPLOYEES.map((e) => e.departmentDivision)
-      ),
-      uniqMerged(
-        DEFAULT_SECTION_MASTERS,
-        SAMPLE_EMPLOYEES.map((e) => e.departmentSection)
-      )
-    )
+    buildInitialForm(buildInitialHierarchy(DEFAULT_DEPARTMENT_HIERARCHY, SAMPLE_EMPLOYEES))
   );
   const [errorMessage, setErrorMessage] = useState("");
   const [editModalEmployee, setEditModalEmployee] =
     useState<Employee | null>(null);
   const [editForm, setEditForm] = useState<EmployeeFormState>(() =>
-    buildInitialForm([], [])
+    buildInitialForm([])
   );
   const [editErrorMessage, setEditErrorMessage] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
@@ -415,7 +499,17 @@ const EmployeeRegistration = () => {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    if (name === "departmentDivision") {
+      const sections =
+        departmentHierarchy.find((d) => d.name === value)?.sections ?? [];
+      setForm((prev) => ({
+        ...prev,
+        departmentDivision: value,
+        departmentSection: sections[0] ?? "",
+      }));
+    } else {
+      setForm((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -426,18 +520,21 @@ const EmployeeRegistration = () => {
       !form.displayName ||
       !form.email ||
       !form.departmentDivision ||
-      !form.departmentSection ||
       !form.joinedAt
     ) {
       setErrorMessage("必須項目をすべて入力してください");
       return;
     }
 
-    if (
-      !divisionMasters.includes(form.departmentDivision) ||
-      !sectionMasters.includes(form.departmentSection)
-    ) {
+    const divEntry = departmentHierarchy.find(
+      (d) => d.name === form.departmentDivision
+    );
+    if (!divEntry) {
       setErrorMessage("部署はマスタに登録された値から選んでください");
+      return;
+    }
+    if (divEntry.sections.length > 0 && !divEntry.sections.includes(form.departmentSection)) {
+      setErrorMessage("課はマスタに登録された値から選んでください");
       return;
     }
 
@@ -453,7 +550,7 @@ const EmployeeRegistration = () => {
     };
 
     setEmployees((prev) => [...prev, newEmployee]);
-    setForm(buildInitialForm(divisionMasters, sectionMasters));
+    setForm(buildInitialForm(departmentHierarchy));
     setShowForm(false);
   };
 
@@ -473,7 +570,7 @@ const EmployeeRegistration = () => {
 
   const closeEditModal = () => {
     setEditModalEmployee(null);
-    setEditForm(buildInitialForm([], []));
+    setEditForm(buildInitialForm([]));
     setEditErrorMessage("");
   };
 
@@ -481,7 +578,17 @@ const EmployeeRegistration = () => {
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
     const { name, value } = e.target;
-    setEditForm((prev) => ({ ...prev, [name]: value }));
+    if (name === "departmentDivision") {
+      const sections =
+        departmentHierarchy.find((d) => d.name === value)?.sections ?? [];
+      setEditForm((prev) => ({
+        ...prev,
+        departmentDivision: value,
+        departmentSection: sections[0] ?? "",
+      }));
+    } else {
+      setEditForm((prev) => ({ ...prev, [name]: value }));
+    }
   };
 
   const handleEditSubmit = (e: FormEvent) => {
@@ -493,18 +600,21 @@ const EmployeeRegistration = () => {
       !editForm.displayName ||
       !editForm.email ||
       !editForm.departmentDivision ||
-      !editForm.departmentSection ||
       !editForm.joinedAt
     ) {
       setEditErrorMessage("必須項目をすべて入力してください");
       return;
     }
 
-    if (
-      !divisionMasters.includes(editForm.departmentDivision) ||
-      !sectionMasters.includes(editForm.departmentSection)
-    ) {
+    const divEntry = departmentHierarchy.find(
+      (d) => d.name === editForm.departmentDivision
+    );
+    if (!divEntry) {
       setEditErrorMessage("部署はマスタに登録された値から選んでください");
+      return;
+    }
+    if (divEntry.sections.length > 0 && !divEntry.sections.includes(editForm.departmentSection)) {
+      setEditErrorMessage("課はマスタに登録された値から選んでください");
       return;
     }
 
@@ -534,25 +644,21 @@ const EmployeeRegistration = () => {
   };
 
   useEffect(() => {
-    setForm((prev) => ({
-      ...prev,
-      departmentDivision: divisionMasters.includes(prev.departmentDivision)
-        ? prev.departmentDivision
-        : (divisionMasters[0] ?? ""),
-      departmentSection: sectionMasters.includes(prev.departmentSection)
-        ? prev.departmentSection
-        : (sectionMasters[0] ?? ""),
-    }));
-    setEditForm((prev) => ({
-      ...prev,
-      departmentDivision: divisionMasters.includes(prev.departmentDivision)
-        ? prev.departmentDivision
-        : (divisionMasters[0] ?? ""),
-      departmentSection: sectionMasters.includes(prev.departmentSection)
-        ? prev.departmentSection
-        : (sectionMasters[0] ?? ""),
-    }));
-  }, [divisionMasters, sectionMasters]);
+    const divNames = departmentHierarchy.map((d) => d.name);
+    const fixForm = (f: EmployeeFormState): EmployeeFormState => {
+      const validDiv = divNames.includes(f.departmentDivision)
+        ? f.departmentDivision
+        : (divNames[0] ?? "");
+      const sections =
+        departmentHierarchy.find((d) => d.name === validDiv)?.sections ?? [];
+      const validSec = sections.includes(f.departmentSection)
+        ? f.departmentSection
+        : (sections[0] ?? "");
+      return { ...f, departmentDivision: validDiv, departmentSection: validSec };
+    };
+    setForm(fixForm);
+    setEditForm(fixForm);
+  }, [departmentHierarchy]);
 
   useEffect(() => {
     if (!editModalEmployee && !deleteTarget) return;
@@ -560,7 +666,7 @@ const EmployeeRegistration = () => {
       if (e.key !== "Escape") return;
       if (editModalEmployee) {
         setEditModalEmployee(null);
-        setEditForm(buildInitialForm([], []));
+        setEditForm(buildInitialForm([]));
         setEditErrorMessage("");
       }
       if (deleteTarget) setDeleteTarget(null);
@@ -571,22 +677,22 @@ const EmployeeRegistration = () => {
 
   const addDivision = (label: string) => {
     if (!label) return "名称を入力してください";
-    if (divisionMasters.includes(label)) return "同じ名前が既にあります";
-    setDivisionMasters((prev) => [...prev, label]);
+    if (departmentHierarchy.some((d) => d.name === label))
+      return "同じ名前が既にあります";
+    setDepartmentHierarchy((prev) => [...prev, { name: label, sections: [] }]);
   };
 
   const renameDivision = (from: string, to: string) => {
     if (!to) return "名称を入力してください";
     if (from === to) return undefined;
-    if (divisionMasters.includes(to)) return "同じ名前が既にあります";
-    setDivisionMasters((prev) =>
-      prev.map((d) => (d === from ? to : d))
+    if (departmentHierarchy.some((d) => d.name === to))
+      return "同じ名前が既にあります";
+    setDepartmentHierarchy((prev) =>
+      prev.map((d) => (d.name === from ? { ...d, name: to } : d))
     );
     setEmployees((prev) =>
       prev.map((e) =>
-        e.departmentDivision === from
-          ? { ...e, departmentDivision: to }
-          : e
+        e.departmentDivision === from ? { ...e, departmentDivision: to } : e
       )
     );
     setForm((f) =>
@@ -601,43 +707,77 @@ const EmployeeRegistration = () => {
   const deleteDivision = (label: string) => {
     const inUse = employees.some((e) => e.departmentDivision === label);
     if (inUse) {
-      return "この部署(部)を使用しているユーザーがいるため削除できません";
+      return "この部を使用しているユーザーがいるため削除できません";
     }
-    setDivisionMasters((prev) => prev.filter((d) => d !== label));
+    setDepartmentHierarchy((prev) => prev.filter((d) => d.name !== label));
   };
 
-  const addSection = (label: string) => {
-    if (!label) return "名称を入力してください";
-    if (sectionMasters.includes(label)) return "同じ名前が既にあります";
-    setSectionMasters((prev) => [...prev, label]);
+  const addSection = (divisionName: string, sectionName: string) => {
+    if (!sectionName) return "名称を入力してください";
+    const div = departmentHierarchy.find((d) => d.name === divisionName);
+    if (!div) return "部署が見つかりません";
+    if (div.sections.includes(sectionName)) return "同じ名前が既にあります";
+    setDepartmentHierarchy((prev) =>
+      prev.map((d) =>
+        d.name === divisionName
+          ? { ...d, sections: [...d.sections, sectionName] }
+          : d
+      )
+    );
   };
 
-  const renameSection = (from: string, to: string) => {
+  const renameSection = (
+    divisionName: string,
+    from: string,
+    to: string
+  ) => {
     if (!to) return "名称を入力してください";
     if (from === to) return undefined;
-    if (sectionMasters.includes(to)) return "同じ名前が既にあります";
-    setSectionMasters((prev) =>
-      prev.map((s) => (s === from ? to : s))
+    const div = departmentHierarchy.find((d) => d.name === divisionName);
+    if (!div) return "部署が見つかりません";
+    if (div.sections.includes(to)) return "同じ名前が既にあります";
+    setDepartmentHierarchy((prev) =>
+      prev.map((d) =>
+        d.name === divisionName
+          ? { ...d, sections: d.sections.map((s) => (s === from ? to : s)) }
+          : d
+      )
     );
     setEmployees((prev) =>
       prev.map((e) =>
-        e.departmentSection === from ? { ...e, departmentSection: to } : e
+        e.departmentDivision === divisionName && e.departmentSection === from
+          ? { ...e, departmentSection: to }
+          : e
       )
     );
     setForm((f) =>
-      f.departmentSection === from ? { ...f, departmentSection: to } : f
+      f.departmentDivision === divisionName && f.departmentSection === from
+        ? { ...f, departmentSection: to }
+        : f
     );
     setEditForm((f) =>
-      f.departmentSection === from ? { ...f, departmentSection: to } : f
+      f.departmentDivision === divisionName && f.departmentSection === from
+        ? { ...f, departmentSection: to }
+        : f
     );
   };
 
-  const deleteSection = (label: string) => {
-    const inUse = employees.some((e) => e.departmentSection === label);
+  const deleteSection = (divisionName: string, sectionName: string) => {
+    const inUse = employees.some(
+      (e) =>
+        e.departmentDivision === divisionName &&
+        e.departmentSection === sectionName
+    );
     if (inUse) {
-      return "この部署(課)を使用しているユーザーがいるため削除できません";
+      return "この課を使用しているユーザーがいるため削除できません";
     }
-    setSectionMasters((prev) => prev.filter((s) => s !== label));
+    setDepartmentHierarchy((prev) =>
+      prev.map((d) =>
+        d.name === divisionName
+          ? { ...d, sections: d.sections.filter((s) => s !== sectionName) }
+          : d
+      )
+    );
   };
 
   const divisionTabs = divisionMasters;
@@ -662,7 +802,7 @@ const EmployeeRegistration = () => {
             type="button"
             onClick={() => {
               setShowForm((prev) => !prev);
-              setForm(buildInitialForm(divisionMasters, sectionMasters));
+              setForm(buildInitialForm(departmentHierarchy));
               setErrorMessage("");
             }}
             className="inline-flex items-center gap-1.5 px-4 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 shadow-sm"
@@ -732,9 +872,6 @@ const EmployeeRegistration = () => {
                   className="block text-xs font-medium text-gray-500 mb-1"
                   htmlFor={`role-label-${role}`}
                 >
-                  <code className="text-[11px] text-gray-600 bg-gray-100 px-1 rounded">
-                    {role}
-                  </code>
                   <span className="ml-2 text-gray-400">
                     既定: {defaultLabels[role]}
                   </span>
@@ -758,26 +895,15 @@ const EmployeeRegistration = () => {
       )}
 
       {showMasterEditor && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <MasterListEditor
-            title="部署（部）— 追加・変更・削除"
-            items={[...divisionMasters].sort((a, b) => a.localeCompare(b))}
-            addPlaceholder="例: 品質保証部"
-            onAdd={addDivision}
-            onRename={renameDivision}
-            onDelete={deleteDivision}
-            deleteBlockedMessage="使用中の部署(部)は削除できません。先に該当ユーザーの部署を変更してください。"
-          />
-          <MasterListEditor
-            title="部署（課）— 追加・変更・削除"
-            items={[...sectionMasters].sort((a, b) => a.localeCompare(b))}
-            addPlaceholder="例: QA課"
-            onAdd={addSection}
-            onRename={renameSection}
-            onDelete={deleteSection}
-            deleteBlockedMessage="使用中の部署(課)は削除できません。先に該当ユーザーの部署を変更してください。"
-          />
-        </div>
+        <HierarchyMasterEditor
+          hierarchy={departmentHierarchy}
+          onAddDivision={addDivision}
+          onRenameDivision={renameDivision}
+          onDeleteDivision={deleteDivision}
+          onAddSection={addSection}
+          onRenameSection={renameSection}
+          onDeleteSection={deleteSection}
+        />
       )}
 
       <div className="flex flex-col lg:flex-row gap-3 lg:items-center">
@@ -910,22 +1036,35 @@ const EmployeeRegistration = () => {
                 <label className="block text-sm font-medium text-gray-700">
                   部署（課） <span className="text-red-500">*</span>
                 </label>
-                <select
-                  name="departmentSection"
-                  value={
-                    sectionMasters.includes(form.departmentSection)
-                      ? form.departmentSection
-                      : (sectionMasters[0] ?? "")
-                  }
-                  onChange={handleChange}
-                  className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                >
-                  {sectionMasters.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                {(() => {
+                  const secs =
+                    departmentHierarchy.find(
+                      (d) => d.name === form.departmentDivision
+                    )?.sections ?? [];
+                  return (
+                    <select
+                      name="departmentSection"
+                      value={
+                        secs.includes(form.departmentSection)
+                          ? form.departmentSection
+                          : (secs[0] ?? "")
+                      }
+                      onChange={handleChange}
+                      disabled={secs.length === 0}
+                      className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                    >
+                      {secs.length === 0 ? (
+                        <option value="">（この部に課が登録されていません）</option>
+                      ) : (
+                        secs.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  );
+                })()}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">
@@ -954,7 +1093,7 @@ const EmployeeRegistration = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setForm(buildInitialForm(divisionMasters, sectionMasters));
+                  setForm(buildInitialForm(departmentHierarchy));
                   setShowForm(false);
                   setErrorMessage("");
                 }}
@@ -1214,22 +1353,35 @@ const EmployeeRegistration = () => {
                   <label className="block text-sm font-medium text-gray-700">
                     部署（課） <span className="text-red-500">*</span>
                   </label>
-                  <select
-                    name="departmentSection"
-                    value={
-                      sectionMasters.includes(editForm.departmentSection)
-                        ? editForm.departmentSection
-                        : (sectionMasters[0] ?? "")
-                    }
-                    onChange={handleEditChange}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm"
-                  >
-                    {sectionMasters.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  {(() => {
+                    const secs =
+                      departmentHierarchy.find(
+                        (d) => d.name === editForm.departmentDivision
+                      )?.sections ?? [];
+                    return (
+                      <select
+                        name="departmentSection"
+                        value={
+                          secs.includes(editForm.departmentSection)
+                            ? editForm.departmentSection
+                            : (secs[0] ?? "")
+                        }
+                        onChange={handleEditChange}
+                        disabled={secs.length === 0}
+                        className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-primary focus:border-primary text-sm disabled:bg-gray-50 disabled:text-gray-400"
+                      >
+                        {secs.length === 0 ? (
+                          <option value="">（この部に課が登録されていません）</option>
+                        ) : (
+                          secs.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">

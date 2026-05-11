@@ -6,6 +6,76 @@ export interface ScoreCardData {
   color: "gray" | "orange" | "blue" | "green" | "amber" | "red";
 }
 
+export interface SurveyOption {
+  id: string;
+  name: string;
+  executedAt: string;
+}
+
+export interface SurveySnapshot {
+  overallScore: number;
+  previousDelta: number;
+  scoreCards: ScoreCardData[];
+}
+
+export const SURVEY_OPTIONS: SurveyOption[] = [
+  { id: "2026-q1", name: "2026年 第1回サーベイ", executedAt: "2026-04-15" },
+  { id: "2025-q3", name: "2025年 第3回サーベイ", executedAt: "2025-10-20" },
+  { id: "2025-q2", name: "2025年 第2回サーベイ", executedAt: "2025-07-10" },
+  { id: "2025-q1", name: "2025年 第1回サーベイ", executedAt: "2025-04-08" },
+];
+
+export const SURVEY_SNAPSHOTS: Record<string, SurveySnapshot> = {
+  "2026-q1": {
+    overallScore: 62.5,
+    previousDelta: 0.5,
+    scoreCards: [
+      { key: "engagement", label: "従業員エンゲージメント", value: "74点", color: "green" },
+      { key: "role", label: "組織温度", value: "80点", color: "amber" },
+      { key: "interpersonal", label: "対個人間でのキズナスコア", value: "64点", color: "gray" },
+      { key: "trend", label: "直近のキズナ認識変化", value: "+43点", delta: "前回比 +0.5", color: "orange" },
+      { key: "roleTrend", label: "回答の正確性", value: "73点", color: "red" },
+      { key: "department", label: "役割期待値", value: "66点", color: "blue" },
+    ],
+  },
+  "2025-q3": {
+    overallScore: 62.0,
+    previousDelta: -1.5,
+    scoreCards: [
+      { key: "engagement", label: "従業員エンゲージメント", value: "71点", color: "green" },
+      { key: "role", label: "組織温度", value: "77点", color: "amber" },
+      { key: "interpersonal", label: "対個人間でのキズナスコア", value: "60点", color: "gray" },
+      { key: "trend", label: "直近のキズナ認識変化", value: "+38点", delta: "前回比 −1.5", color: "orange" },
+      { key: "roleTrend", label: "回答の正確性", value: "70点", color: "red" },
+      { key: "department", label: "役割期待値", value: "63点", color: "blue" },
+    ],
+  },
+  "2025-q2": {
+    overallScore: 63.5,
+    previousDelta: 2.0,
+    scoreCards: [
+      { key: "engagement", label: "従業員エンゲージメント", value: "76点", color: "green" },
+      { key: "role", label: "組織温度", value: "82点", color: "amber" },
+      { key: "interpersonal", label: "対個人間でのキズナスコア", value: "67点", color: "gray" },
+      { key: "trend", label: "直近のキズナ認識変化", value: "+45点", delta: "前回比 +2.0", color: "orange" },
+      { key: "roleTrend", label: "回答の正確性", value: "75点", color: "red" },
+      { key: "department", label: "役割期待値", value: "68点", color: "blue" },
+    ],
+  },
+  "2025-q1": {
+    overallScore: 61.5,
+    previousDelta: -0.5,
+    scoreCards: [
+      { key: "engagement", label: "従業員エンゲージメント", value: "69点", color: "green" },
+      { key: "role", label: "組織温度", value: "75点", color: "amber" },
+      { key: "interpersonal", label: "対個人間でのキズナスコア", value: "58点", color: "gray" },
+      { key: "trend", label: "直近のキズナ認識変化", value: "+35点", delta: "前回比 −0.5", color: "orange" },
+      { key: "roleTrend", label: "回答の正確性", value: "68点", color: "red" },
+      { key: "department", label: "役割期待値", value: "61点", color: "blue" },
+    ],
+  },
+};
+
 export const OVERALL_SCORE = 62.5;
 export const PREVIOUS_SCORE_DELTA = 0.5;
 
