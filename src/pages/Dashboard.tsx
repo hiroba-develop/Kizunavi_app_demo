@@ -28,7 +28,6 @@ const compareAlertByCategoryThenPriority = (a: AlertItem, b: AlertItem) => {
 
 const Dashboard = () => {
   const [activeCategory, setActiveCategory] = useState("すべて");
-  const [period, setPeriod] = useState<"month" | "all">("month");
   const [selectedSurveyId, setSelectedSurveyId] = useState(SURVEY_OPTIONS[0].id);
 
   const snapshot = SURVEY_SNAPSHOTS[selectedSurveyId] ?? SURVEY_SNAPSHOTS[SURVEY_OPTIONS[0].id];
@@ -59,8 +58,6 @@ const Dashboard = () => {
       );
   }, [activeCategory, priorityTopPool]);
 
-  const unreadCount = filteredAlerts.length;
-
   return (
     <div className="space-y-6">
       {/* 総合スコア */}
@@ -85,7 +82,7 @@ const Dashboard = () => {
             <div className="flex items-center gap-4 flex-1">
               <CircularScore value={snapshot.overallScore} size={84} />
               <div className="flex-1">
-                <div className="flex items-baseline gap-2">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                   <span className="text-base font-semibold text-gray-900">
                     キズナ度
                   </span>
@@ -93,6 +90,10 @@ const Dashboard = () => {
                     {snapshot.overallScore}点
                   </span>
                   <span className="text-sm text-gray-500">/ 100点</span>
+                  <span className="text-xs text-gray-500 sm:ml-1">
+                    前回比 {snapshot.previousDelta > 0 ? "+" : ""}
+                    {snapshot.previousDelta}
+                  </span>
                 </div>
                 <div className="mt-2 w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
                   <div
@@ -120,16 +121,12 @@ const Dashboard = () => {
             ))}
           </div>
 
-          <div className="mt-2 text-[11px] text-gray-500 text-right">
-            前回比 {snapshot.previousDelta > 0 ? "+" : ""}
-            {snapshot.previousDelta}
-          </div>
         </div>
       </section>
 
       {/* アラート一覧 */}
       <section>
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center mb-2">
           <div className="flex items-center gap-2">
             <span className="inline-block w-1 h-4 bg-primary rounded-sm" />
             <span className="text-xs font-semibold tracking-widest text-gray-500">
@@ -139,32 +136,6 @@ const Dashboard = () => {
               優先順位の高い順に最大{DISPLAY_ALERT_LIMIT}件表示（全
               {ALERTS.length}項目より）
             </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPeriod("month")}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                period === "month"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                  : "border-gray-200 text-gray-500 bg-white"
-              }`}
-            >
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              過去1ヶ月
-            </button>
-            <button
-              type="button"
-              onClick={() => setPeriod("all")}
-              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                period === "all"
-                  ? "border-rose-300 bg-rose-50 text-rose-700"
-                  : "border-gray-200 text-gray-500 bg-white"
-              }`}
-            >
-              <span className="h-2 w-2 rounded-full bg-rose-500" />
-              未読送 {unreadCount}件
-            </button>
           </div>
         </div>
 
@@ -592,11 +563,19 @@ const PointDetailCard = ({ point, dotColor }: PointDetailCardProps) => {
           <div className="text-xs text-gray-500 mt-0.5">{point.subtitle}</div>
         </div>
       </div>
-      <div className="px-4 py-3 grid grid-cols-2 gap-2">
+      <div className="px-4 py-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
         <div className="rounded border border-gray-100 px-3 py-2 bg-gray-50">
-          <div className="text-[10px] text-gray-500">キズナスコア</div>
-          <div className="text-xl font-bold text-rose-600 leading-none mt-1">
-            {point.kizunaScore}
+          <div className="text-[10px] text-gray-500">対人キズナスコア</div>
+          <div className="text-xl font-bold text-sky-600 leading-none mt-1">
+            {point.kizunaInterpersonal}
+            <span className="text-xs font-normal text-gray-500 ml-0.5">点</span>
+          </div>
+        </div>
+        <div className="rounded border border-gray-100 px-3 py-2 bg-gray-50">
+          <div className="text-[10px] text-gray-500">対組織キズナスコア</div>
+          <div className="text-xl font-bold text-violet-600 leading-none mt-1">
+            {point.kizunaOrganizational}
+            <span className="text-xs font-normal text-gray-500 ml-0.5">点</span>
           </div>
         </div>
         <div className="rounded border border-gray-100 px-3 py-2 bg-gray-50">

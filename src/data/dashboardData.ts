@@ -451,7 +451,10 @@ export interface ValueMapPoint {
   subtitle: string;
   x: number;
   y: number;
-  kizunaScore: number;
+  /** 対人キズナスコア */
+  kizunaInterpersonal: number;
+  /** 対組織キズナスコア */
+  kizunaOrganizational: number;
   phase: string;
   phaseTone: "danger" | "warning" | "ok";
   description: string;
@@ -464,7 +467,8 @@ export const VALUE_MAP_EXPLORE_USE: ValueMapPoint[] = [
     subtitle: "マネージャー・営業部",
     x: 30,
     y: 78,
-    kizunaScore: 72,
+    kizunaInterpersonal: 70,
+    kizunaOrganizational: 74,
     phase: "フェーズ3",
     phaseTone: "ok",
     description: "探索・短期志向。新しい挑戦への意欲が高く、短期サイクルで成果を出すスタイルです。",
@@ -475,7 +479,8 @@ export const VALUE_MAP_EXPLORE_USE: ValueMapPoint[] = [
     subtitle: "リーダー・企画部",
     x: 60,
     y: 82,
-    kizunaScore: 78,
+    kizunaInterpersonal: 76,
+    kizunaOrganizational: 80,
     phase: "フェーズ3",
     phaseTone: "ok",
     description: "探索・長期志向。中長期視点で新しい価値を生み出すリーダーシップを発揮しています。",
@@ -486,7 +491,8 @@ export const VALUE_MAP_EXPLORE_USE: ValueMapPoint[] = [
     subtitle: "メンバー・開発部",
     x: 70,
     y: 60,
-    kizunaScore: 65,
+    kizunaInterpersonal: 63,
+    kizunaOrganizational: 67,
     phase: "フェーズ2",
     phaseTone: "warning",
     description: "活用寄り・長期志向。既存資産を活かしつつ将来を見据えた業務遂行が特徴です。",
@@ -497,7 +503,8 @@ export const VALUE_MAP_EXPLORE_USE: ValueMapPoint[] = [
     subtitle: "メンバー・人事部",
     x: 55,
     y: 42,
-    kizunaScore: 58,
+    kizunaInterpersonal: 55,
+    kizunaOrganizational: 60,
     phase: "フェーズ2",
     phaseTone: "warning",
     description: "活用・中期志向。安定した運用を支えながら、改善余地への気づきも持っています。",
@@ -508,7 +515,8 @@ export const VALUE_MAP_EXPLORE_USE: ValueMapPoint[] = [
     subtitle: "メンバー・経理部",
     x: 48,
     y: 38,
-    kizunaScore: 49,
+    kizunaInterpersonal: 52,
+    kizunaOrganizational: 46,
     phase: "フェーズ1",
     phaseTone: "danger",
     description: "活用・短期志向。現状維持傾向が強く、新しい取り組みへの動機づけが必要。",
@@ -522,7 +530,8 @@ export const VALUE_MAP_EXPRESS_RESTRAIN: ValueMapPoint[] = [
     subtitle: "リーダー・営業部",
     x: 35,
     y: 78,
-    kizunaScore: 70,
+    kizunaInterpersonal: 72,
+    kizunaOrganizational: 68,
     phase: "フェーズ3",
     phaseTone: "ok",
     description: "表現・傾聴志向。意見を率直に伝えながらも、相手の声を丁寧にすくい上げるバランス型。",
@@ -533,7 +542,8 @@ export const VALUE_MAP_EXPRESS_RESTRAIN: ValueMapPoint[] = [
     subtitle: "メンバー・開発部",
     x: 75,
     y: 72,
-    kizunaScore: 65,
+    kizunaInterpersonal: 68,
+    kizunaOrganizational: 62,
     phase: "フェーズ2",
     phaseTone: "warning",
     description: "表現・主張志向。自分の考えを明確に発信し、議論をリードする傾向があります。",
@@ -544,7 +554,8 @@ export const VALUE_MAP_EXPRESS_RESTRAIN: ValueMapPoint[] = [
     subtitle: "マネージャー・管理部",
     x: 60,
     y: 50,
-    kizunaScore: 60,
+    kizunaInterpersonal: 58,
+    kizunaOrganizational: 62,
     phase: "フェーズ2",
     phaseTone: "warning",
     description: "中庸・主張寄り。落ち着いた発信を心がけつつ、必要な場面では明確に意見を示します。",
@@ -555,7 +566,8 @@ export const VALUE_MAP_EXPRESS_RESTRAIN: ValueMapPoint[] = [
     subtitle: "メンバー・経理部",
     x: 75,
     y: 35,
-    kizunaScore: 49,
+    kizunaInterpersonal: 45,
+    kizunaOrganizational: 52,
     phase: "フェーズ1",
     phaseTone: "danger",
     description: "抑制・主張志向。発言量は控えめながら、必要な指摘は明確に行うタイプです。",
